@@ -79,3 +79,10 @@ Action: Documentation
 Result: Added comprehensive educational comments to all Go source files to aid understanding of language features and project structure.
 Next Steps: User to review and run the application.
 ---
+
+---
+Date: 2026-01-04
+Action: Operations
+Result: Created `init-scripts/alpha-watcher.service` for systemd integration on Ubuntu.
+Next Steps: Deploy to GCP and enable service.
+---

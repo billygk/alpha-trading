@@ -1,0 +1,16 @@
+[Unit]
+Description=Alpha Watcher Trading Bot
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/alpha_trading
+ExecStart=/home/ubuntu/alpha_trading/alpha_watcher_linux_amd64
+Restart=always
+RestartSec=10
+StandardOutput=syslog
+StandardError=syslog
+EnvironmentFile=/home/ubuntu/alpha_trading/.env
+
+[Install]
+WantedBy=multi-user.target
