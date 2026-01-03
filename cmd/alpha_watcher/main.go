@@ -8,6 +8,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/alpacahq/alpaca-trade-api-go/v3/marketdata"
@@ -52,14 +54,21 @@ type PortfolioState struct {
 }
 
 const StateFile = "portfolio_state.json"
+const LogFile = "watcher.log"
+
+var (
+	// Fixed CET location (UTC+1).
+	// Real-world usage should load "Europe/Madrid" properly, but fixed strict offset ensures consistency if zoneinfo missing.
+	cetLoc = time.FixedZone("CET", 3600)
+)
 
 func main() {
 	// 1. Initialization
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	setupLogging()
 
 	// Load environment variables
 	if err := godotenv.Load(); err != nil {
-		log.Println("Warning: No .env file found, using system environment variables")
+		cetLog("Warning: No .env file found, using system environment variables")
 	}
 
 	// Verify required environment variables for Alpaca
@@ -67,7 +76,7 @@ func main() {
 	missingVars := false
 	for _, envVar := range requiredEnvVars {
 		if os.Getenv(envVar) == "" {
-			log.Printf("CRITICAL: Missing environment variable: %s", envVar)
+			cetLog("CRITICAL: Missing environment variable: %s", envVar)
 			missingVars = true
 		} else {
 			// Masking secret for logs
@@ -78,27 +87,48 @@ func main() {
 			} else {
 				masked = "***"
 			}
-			log.Printf("Env Loaded: %s=%s", envVar, masked)
+			cetLog("Env Loaded: %s=%s", envVar, masked)
 		}
 	}
 	if missingVars {
-		log.Println("Warning: proceeding but Alpaca client may fail")
+		cetLog("Warning: proceeding but Alpaca client may fail")
 	}
 
-	// 2. Setup Alpaca
+	// 2. Setup Signal Handling (Graceful Shutdown)
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-c
+		cetLog("⚠️ Watcher Shutting Down: System signal received.")
+
+		// Final Save
+		state, err := loadState()
+		if err == nil {
+			state.LastSync = time.Now().In(cetLoc).Format(time.RFC3339)
+			saveState(state)
+			cetLog("Final state saved successfully.")
+		} else {
+			cetLog("Error loading state during shutdown: %v", err)
+		}
+
+		notify("⚠️ Watcher Shutting Down: System signal received.")
+		os.Exit(0)
+	}()
+
+	// 3. Setup Alpaca
 	// Note: The SDK uses APCA_API_KEY_ID and APCA_API_SECRET_KEY by default
 	alpacaClient := marketdata.NewClient(marketdata.ClientOpts{})
 	provider := &AlpacaProvider{client: alpacaClient}
 
-	log.Println("Alpha Watcher v1.8.0-GO Initialized [Local Environment]")
+	cetLog("Alpha Watcher v1.8.0-GO Initialized [Local Environment]")
 
-	// 3. Main Loop
+	// 4. Main Loop
 	for {
 		poll(provider)
 
 		// Calculate and log next scheduled check
-		nextTick := time.Now().Add(1 * time.Hour)
-		log.Printf("Next check scheduled for: %s", nextTick.Format("2006-01-02 15:04:05 MST"))
+		nextTick := time.Now().In(cetLoc).Add(1 * time.Hour)
+		cetLog("Next check scheduled for: %s", nextTick.Format("2006-01-02 15:04:05 MST"))
 
 		// Sleep for exactly 1 hour
 		time.Sleep(1 * time.Hour)
@@ -108,7 +138,7 @@ func main() {
 func poll(p MarketProvider) {
 	state, err := loadState()
 	if err != nil {
-		log.Printf("CRITICAL: Could not load state: %v", err)
+		cetLog("CRITICAL: Could not load state: %v", err)
 		return
 	}
 
@@ -119,11 +149,11 @@ func poll(p MarketProvider) {
 
 		price, err := p.GetPrice(pos.Ticker)
 		if err != nil {
-			log.Printf("ERROR: Fetching price for %s: %v", pos.Ticker, err)
+			cetLog("ERROR: Fetching price for %s: %v", pos.Ticker, err)
 			continue
 		}
 
-		log.Printf("[%s] Current: $%.2f | SL: $%.2f | TP: $%.2f", pos.Ticker, price, pos.StopLoss, pos.TakeProfit)
+		cetLog("[%s] Current: $%.2f | SL: $%.2f | TP: $%.2f", pos.Ticker, price, pos.StopLoss, pos.TakeProfit)
 
 		if price <= pos.StopLoss {
 			notify(fmt.Sprintf("🛑 *STOP LOSS HIT*\nAsset: %s\nPrice: $%.2f\nAction: SELL REQUIRED", pos.Ticker, price))
@@ -134,8 +164,28 @@ func poll(p MarketProvider) {
 		}
 	}
 
-	state.LastSync = time.Now().Format(time.RFC3339)
+	state.LastSync = time.Now().In(cetLoc).Format(time.RFC3339)
 	saveState(state)
+}
+
+// --- LOGGING ---
+
+func setupLogging() {
+	f, err := os.OpenFile(LogFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Printf("Failed to open log file: %v", err)
+		return
+	}
+
+	mw := io.MultiWriter(os.Stdout, f)
+	log.SetOutput(mw)
+	log.SetFlags(0) // Disable standard flags, we handle timestamp manually
+}
+
+func cetLog(format string, v ...interface{}) {
+	now := time.Now().In(cetLoc).Format("2006/01/02 15:04:05")
+	msg := fmt.Sprintf(format, v...)
+	log.Printf("%s %s", now, msg)
 }
 
 // --- UTILITIES ---
@@ -143,7 +193,7 @@ func poll(p MarketProvider) {
 func loadState() (PortfolioState, error) {
 	var s PortfolioState
 	if _, err := os.Stat(StateFile); os.IsNotExist(err) {
-		log.Println("State file missing, generating template...")
+		cetLog("State file missing, generating template...")
 		s = PortfolioState{Version: "1.1", Positions: []Position{}}
 		// Save the genesis state immediately
 		saveState(s)
@@ -173,7 +223,7 @@ func notify(text string) {
 	chatID := os.Getenv("TELEGRAM_CHAT_ID")
 
 	if token == "" || chatID == "" {
-		log.Println("Warning: Telegram credentials missing, skipping notification")
+		cetLog("Warning: Telegram credentials missing, skipping notification")
 		return
 	}
 
@@ -186,6 +236,6 @@ func notify(text string) {
 
 	_, err := http.Post(url, "application/json", bytes.NewBuffer(payload))
 	if err != nil {
-		log.Printf("Telegram Alert Failed: %v", err)
+		cetLog("Telegram Alert Failed: %v", err)
 	}
 }

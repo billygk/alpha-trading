@@ -39,3 +39,19 @@ Result:
 - Refactored project structure to `cmd/alpha_watcher/main.go` standard.
 Next Steps: Implement Graceful Shutdown & Heartbeat logic.
 ---
+
+---
+Date: 2026-01-03
+Action: CI/CD Remediation
+Result: 
+- Fixed `.gitignore` to include `/cmd` source.
+- Granted `contents: write` permission to GitHub Action.
+Next Steps: Implement Features.
+---
+Date: 2026-01-03
+Action: Implemented Shutdown & Logging (Points 7 & 8)
+Result: 
+- Added Graceful Shutdown (SIGTERM/SIGINT) with state saving and Telegram alerts.
+- Added Robust Logging (MultiWriter to Console + `watcher.log`) with CET timestamps.
+Next Steps: Implement Heartbeat Logic (Point 9).
+---
