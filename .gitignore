@@ -8,6 +8,11 @@
 *.so
 *.dylib
 
+# Build Directories
+/bin/
+/dist/
+*.sha256
+
 # Test binary, built with `go test -c`
 *.test
 
@@ -28,5 +33,6 @@ go.work.sum
 .env
 
 # Editor/IDE
-# .idea/
-# .vscode/
+.idea/
+.vscode/
+/cmd

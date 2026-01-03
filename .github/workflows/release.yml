@@ -1,0 +1,33 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.22'
+
+      - name: Build Static Binary
+        run: |
+          env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags='-s -w' -o alpha_watcher_linux_amd64 ./cmd/alpha_watcher
+
+      - name: Generate Checksum
+        run: |
+          sha256sum alpha_watcher_linux_amd64 > alpha_watcher_linux_amd64.sha256
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            alpha_watcher_linux_amd64
+            alpha_watcher_linux_amd64.sha256
