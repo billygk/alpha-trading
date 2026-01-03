@@ -56,3 +56,24 @@ You are an expert Golang Developer and System Architect. You are building a high
 - System Uptime (calculate since start).
 - Current Alpaca Account Equity (fetch from client.GetAccount()).
 3. Ensure the heartbeat does not block the main polling loop (use a goroutine or check a timestamp within the main loop).
+
+## 10. Systemd Service Configuration (Daemonization)
+
+1. Generate a Linux systemd unit file named alpha-watcher.service.
+2. The service should:
+- Run under the ubuntu user.
+- Set the WorkingDirectory to /home/ubuntu/alpha_trading.
+- Use Restart=always and RestartSec=10.
+- Capture StandardOutput and StandardError to syslog.
+3. Provide the terminal commands to install, enable, and start this service on the GCP box.
+
+## 11. Interactive Telegram Commands (Inbound Integration)
+
+1. Implement a Telegram "Command Listener" using long-polling (/getUpdates).
+2. Use a dedicated goroutine for the listener to prevent blocking the market polling loop.
+3. Use a sync.RWMutex to protect the PortfolioState struct during concurrent read/write operations.
+4. Implement the following commands (strictly restricted to the TELEGRAM_CHAT_ID):
+- /status: Return the current uptime and account equity.
+- /list: List all active positions and their current distance from Stop Loss.
+- /ping: Simple connectivity check.
+5. Ensure the bot ignores messages from any other chat_id.

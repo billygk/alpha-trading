@@ -65,3 +65,17 @@ Result:
 - Setup Alpaca Trading Client to fetch Account Equity.
 Next Steps: Monitor Stability.
 ---
+
+---
+Date: 2026-01-04
+Action: Project Refactoring
+Result: Started extracting monolithic `main.go` into `internal` packages (models, config, market, storage, notifications).
+Next Steps: Refactor `main.go` to use new packages.
+---
+
+---
+Date: 2026-01-04
+Action: Documentation
+Result: Added comprehensive educational comments to all Go source files to aid understanding of language features and project structure.
+Next Steps: User to review and run the application.
+---
