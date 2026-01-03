@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
 	"github.com/alpacahq/alpaca-trade-api-go/v3/marketdata"
 	"github.com/joho/godotenv"
 )
@@ -21,19 +22,29 @@ import (
 // MarketProvider abstracts the exchange logic (Alpaca, Kraken, etc.)
 type MarketProvider interface {
 	GetPrice(ticker string) (float64, error)
+	GetEquity() (float64, error)
 }
 
 // AlpacaProvider implements MarketProvider for US Stocks
 type AlpacaProvider struct {
-	client *marketdata.Client
+	mdClient    *marketdata.Client
+	tradeClient *alpaca.Client
 }
 
 func (a *AlpacaProvider) GetPrice(ticker string) (float64, error) {
-	trade, err := a.client.GetLatestTrade(ticker, marketdata.GetLatestTradeRequest{})
+	trade, err := a.mdClient.GetLatestTrade(ticker, marketdata.GetLatestTradeRequest{})
 	if err != nil {
 		return 0, err
 	}
 	return trade.Price, nil
+}
+
+func (a *AlpacaProvider) GetEquity() (float64, error) {
+	acct, err := a.tradeClient.GetAccount()
+	if err != nil {
+		return 0, err
+	}
+	return acct.Equity.InexactFloat64(), nil
 }
 
 // --- DATA STRUCTURES ---
@@ -48,9 +59,10 @@ type Position struct {
 }
 
 type PortfolioState struct {
-	Version   string     `json:"version"`
-	LastSync  string     `json:"last_sync"`
-	Positions []Position `json:"positions"`
+	Version       string     `json:"version"`
+	LastSync      string     `json:"last_sync"`
+	LastHeartbeat string     `json:"last_heartbeat"`
+	Positions     []Position `json:"positions"`
 }
 
 const StateFile = "portfolio_state.json"
@@ -59,7 +71,8 @@ const LogFile = "watcher.log"
 var (
 	// Fixed CET location (UTC+1).
 	// Real-world usage should load "Europe/Madrid" properly, but fixed strict offset ensures consistency if zoneinfo missing.
-	cetLoc = time.FixedZone("CET", 3600)
+	cetLoc    = time.FixedZone("CET", 3600)
+	startTime = time.Now()
 )
 
 func main() {
@@ -117,8 +130,12 @@ func main() {
 
 	// 3. Setup Alpaca
 	// Note: The SDK uses APCA_API_KEY_ID and APCA_API_SECRET_KEY by default
-	alpacaClient := marketdata.NewClient(marketdata.ClientOpts{})
-	provider := &AlpacaProvider{client: alpacaClient}
+	alpacaMdClient := marketdata.NewClient(marketdata.ClientOpts{})
+	alpacaTradeClient := alpaca.NewClient(alpaca.ClientOpts{})
+	provider := &AlpacaProvider{
+		mdClient:    alpacaMdClient,
+		tradeClient: alpacaTradeClient,
+	}
 
 	cetLog("Alpha Watcher v1.8.0-GO Initialized [Local Environment]")
 
@@ -141,6 +158,47 @@ func poll(p MarketProvider) {
 		cetLog("CRITICAL: Could not load state: %v", err)
 		return
 	}
+
+	// --- HEARTBEAT LOGIC ---
+	// Check if 24 hours have passed since last heartbeat
+	sendHB := false
+	if state.LastHeartbeat == "" {
+		sendHB = true
+	} else {
+		lastHBTime, parseErr := time.Parse(time.RFC3339, state.LastHeartbeat)
+		if parseErr != nil || time.Since(lastHBTime) >= 24*time.Hour {
+			sendHB = true
+		}
+	}
+
+	if sendHB {
+		activeCount := 0
+		for _, pos := range state.Positions {
+			if pos.Status == "ACTIVE" {
+				activeCount++
+			}
+		}
+
+		equity, eqErr := p.GetEquity()
+		equityStr := fmt.Sprintf("$%.2f", equity)
+		if eqErr != nil {
+			equityStr = "Error fetching"
+			cetLog("Error fetching equity: %v", eqErr)
+		}
+
+		uptimeDuration := time.Since(startTime).Round(time.Second)
+
+		hbMsg := fmt.Sprintf("💓 *HEARTBEAT*\n"+
+			"Uptime: %s\n"+
+			"Active Positions: %d\n"+
+			"Equity: %s\n"+
+			"System: Nominal",
+			uptimeDuration.String(), activeCount, equityStr)
+
+		notify(hbMsg)
+		state.LastHeartbeat = time.Now().In(cetLoc).Format(time.RFC3339)
+	}
+	// -----------------------
 
 	for i, pos := range state.Positions {
 		if pos.Status != "ACTIVE" {

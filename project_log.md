@@ -53,5 +53,15 @@ Action: Implemented Shutdown & Logging (Points 7 & 8)
 Result: 
 - Added Graceful Shutdown (SIGTERM/SIGINT) with state saving and Telegram alerts.
 - Added Robust Logging (MultiWriter to Console + `watcher.log`) with CET timestamps.
-Next Steps: Implement Heartbeat Logic (Point 9).
+Next Steps: Monitor Stability.
+---
+
+---
+Date: 2026-01-03
+Action: Implemented Heartbeat (Point 9)
+Result: 
+- Added `LastHeartbeat` tracking to `state.json`.
+- Implemented 24h interval check in polling loop.
+- Setup Alpaca Trading Client to fetch Account Equity.
+Next Steps: Monitor Stability.
 ---
