@@ -2,11 +2,111 @@ package config
 
 import (
 	"log"
+	"os"
 	"strconv"
+	"time"
+
+	"github.com/joho/godotenv"
 )
 
 // CetLoc is a public variable (indicated by the Capitalized name) holding the Time Zone info.
-// ... (rest of file) ...
+// We use FixedZone here to hardcode UTC+1 for simplicity, but in production, we might load a real location.
+var CetLoc = time.FixedZone("CET", 3600)
+
+// Config holds all tweakable application parameters.
+// Values are loaded from environment variables or set to sensible defaults.
+type Config struct {
+	LogLevel         string // Environment: WATCHER_LOG_LEVEL
+	MaxLogSizeMB     int64  // Environment: WATCHER_MAX_LOG_SIZE_MB
+	MaxLogBackups    int    // Environment: WATCHER_MAX_LOG_BACKUPS
+	PollIntervalMins int    // Environment: WATCHER_POLL_INTERVAL
+}
+
+// Load initializes the configuration.
+// It reads .env, checks required secrets, and populates the Config struct.
+func Load() *Config {
+	// Load .env variables into the process environment without overwriting existing env vars
+	if err := godotenv.Load(); err != nil {
+		log.Println("Warning: No .env file found, using system environment variables")
+	}
+
+	// 1. Validation: Fatal check for required secrets
+	requiredSecretVars := map[string]bool{
+		"APCA_API_KEY_ID":     true,
+		"APCA_API_SECRET_KEY": true,
+		"APCA_API_BASE_URL":   true,
+		"TELEGRAM_BOT_TOKEN":  true,
+		"TELEGRAM_CHAT_ID":    true,
+	}
+
+	var missing []string
+	for key := range requiredSecretVars {
+		if os.Getenv(key) == "" {
+			missing = append(missing, key)
+		}
+	}
+
+	if len(missing) > 0 {
+		log.Fatalf("CRITICAL: Missing required environment variables: %v", missing)
+	}
+
+	// 2. Print variables explicitly defined in the local .env file (for debugging)
+	envMap, err := godotenv.Read()
+	if err == nil {
+		log.Println("--- .env File Variables ---")
+		for key, val := range envMap {
+			if requiredSecretVars[key] {
+				// Mask secret values (last 4 chars visible)
+				masked := "***"
+				if len(val) > 4 {
+					masked = "***" + val[len(val)-4:]
+				}
+				log.Printf("%s=%s", key, masked)
+			} else {
+				log.Printf("%s=%s", key, val)
+			}
+		}
+		log.Println("---------------------------")
+	}
+
+	// 3. Populate Config struct with Defaults + Env Overrides
+	cfg := &Config{
+		LogLevel:         getEnv("WATCHER_LOG_LEVEL", "INFO"),
+		MaxLogSizeMB:     getEnvAsInt64("WATCHER_MAX_LOG_SIZE_MB", 5),
+		MaxLogBackups:    getEnvAsInt("WATCHER_MAX_LOG_BACKUPS", 3),
+		PollIntervalMins: getEnvAsInt("WATCHER_POLL_INTERVAL", 60),
+	}
+
+	log.Printf("Configuration Loaded: LogLevel=%s, MaxSize=%dMB, Backups=%d, PollInterval=%dm",
+		cfg.LogLevel, cfg.MaxLogSizeMB, cfg.MaxLogBackups, cfg.PollIntervalMins)
+
+	return cfg
+}
+
+// Helper to get string env with default
+func getEnv(key, fallback string) string {
+	if value, exists := os.LookupEnv(key); exists {
+		return value
+	}
+	return fallback
+}
+
+// Helper to get int env with default
+func getEnvAsInt(key string, fallback int) int {
+	valueStr, exists := os.LookupEnv(key)
+	if !exists {
+		return fallback
+	}
+	return parseInt(valueStr, fallback)
+}
+
+func getEnvAsInt64(key string, fallback int64) int64 {
+	valueStr, exists := os.LookupEnv(key)
+	if !exists {
+		return fallback
+	}
+	return parseInt64(valueStr, fallback)
+}
 
 func parseInt(s string, fallback int) int {
 	val, err := strconv.Atoi(s)
