@@ -121,16 +121,31 @@ You are an expert Golang Developer and System Architect. You are building a high
 
 ## 16. Search & Discovery (Minimalist)
 
-1. Prompt for Agent: Implement /search <query>:
+1. Implement /search <query>:
 2. The bot should use Alpaca's GetAssets with a filter to find symbols matching the query string.
 3. Return a maximum of 5 results (Ticker - Name) to prevent Telegram character overflow.
 4. Constraint: This must be a memory-efficient call. Do not cache the entire asset list in RAM. Use alpaca.GetAssets with the status=active and asset_class=us_equity parameters.
 
 ## 17. Interactive Help System (Self-Documentation)
 
-1. Prompt for Agent: Implement a /help command in the Telegram handler.
+1. Implement a /help command in the Telegram handler.
 2. The command must return a comprehensive list of all active commands: /status, /list, /ping, /price, /market, and /search.
 3. Each command must include a one-line description and example usage (e.g., /price AAPL).
 4. Implementation Requirement: Store these descriptions in a structured way (e.g., a map or a slice of structs) within the code so that the help system is easy to update in future tasks.
 5. Formatting: Use Markdown formatting for the response to ensure triggers and descriptions are clearly separated.
+
+## 18. Attended Automation & Manual Confirmation (ACTIVE)
+
+1. Monitor real-time prices: Utilize the WebSocket stream (Point 14).
+2. On SL/TP trigger: - Capture the trigger_price and timestamp.
+- Store the pending trade in a thread-safe map (sync.Mutex protected).
+3. Send Telegram message: Include ticker, side, trigger price, and inline [✅ CONFIRM] / [❌ CANCEL] buttons.
+4. On Callback (User clicks Confirm):
+- Temporal Gate: Validate that now - timestamp <= CONFIRMATION_TTL_SEC (from .env).
+- Deviation Gate: Fetch the latest price (REST call for accuracy) and validate that abs(current_price - trigger_price) / trigger_price <= CONFIRMATION_MAX_DEVIATION_PCT (from .env).
+- If either gate fails: Notify user of the specific failure and purge the action.
+5. Execution: If both gates pass, execute alpaca.PlaceOrder (Market Order) and update portfolio_state.json to EXECUTED.
+6. Cleanup: Purge the pending action from memory regardless of outcome.
+
+
 

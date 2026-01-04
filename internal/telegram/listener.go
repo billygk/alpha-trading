@@ -23,6 +23,18 @@ type Update struct {
 			Username string `json:"username"`
 		} `json:"from"`
 	} `json:"message"`
+	CallbackQuery struct {
+		ID      string `json:"id"`
+		Data    string `json:"data"`
+		Message struct {
+			Chat struct {
+				ID int64 `json:"id"`
+			} `json:"chat"`
+		} `json:"message"`
+		From struct {
+			Username string `json:"username"`
+		} `json:"from"`
+	} `json:"callback_query"`
 }
 
 type UpdateResponse struct {
@@ -35,9 +47,8 @@ type UpdateResponse struct {
 // CommandHandler defines the callback signature for processing commands
 type CommandHandler func(command string) string
 
-// StartListener begins long-polling for commands.
-// It runs blocking, so it should be called in a goroutine.
-func StartListener(handler CommandHandler) {
+// StartListener begins long-polling for updates.
+func StartListener(cmdHandler CommandHandler, cbHandler CallbackHandler) {
 	token := os.Getenv("TELEGRAM_BOT_TOKEN")
 	authChatIDStr := os.Getenv("TELEGRAM_CHAT_ID")
 
@@ -78,20 +89,41 @@ func StartListener(handler CommandHandler) {
 		for _, update := range result.Result {
 			offset = update.UpdateID + 1
 
+			// Check for Message or Callback
+			var chatID int64
+			var username string
+			var text string
+			var isCallback bool
+
+			if update.Message.Chat.ID != 0 {
+				chatID = update.Message.Chat.ID
+				username = update.Message.From.Username
+				text = update.Message.Text
+			} else if update.CallbackQuery.ID != "" {
+				isCallback = true
+				chatID = update.CallbackQuery.Message.Chat.ID
+				username = update.CallbackQuery.From.Username
+				text = update.CallbackQuery.Data
+			}
+
 			// Access Control
-			if update.Message.Chat.ID != authChatID {
-				log.Printf("⚠️ UNAUTHORIZED CODE ACCESS ATTEMPT: User %s (ID: %d) tried: %s",
-					update.Message.From.Username, update.Message.Chat.ID, update.Message.Text)
-				// We do NOT reply to unauthorized users to avoid leaking bot existence/logic
+			if chatID != authChatID {
+				log.Printf("⚠️ UNAUTHORIZED ACCESS ATTEMPT: User %s (ID: %d)", username, chatID)
 				continue
 			}
 
-			// Process Command
-			text := strings.TrimSpace(update.Message.Text)
-			if strings.HasPrefix(text, "/") {
-				log.Printf("Command received: %s", text)
-				response := handler(text)
-				Notify(response)
+			if isCallback {
+				log.Printf("Callback received: %s", text)
+				response := cbHandler(update.CallbackQuery.ID, text)
+				Notify(response) // Or handle specific answerCallback logic
+			} else {
+				// Process Command
+				text = strings.TrimSpace(text)
+				if strings.HasPrefix(text, "/") {
+					log.Printf("Command received: %s", text)
+					response := cmdHandler(text)
+					Notify(response)
+				}
 			}
 		}
 	}

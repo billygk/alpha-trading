@@ -157,3 +157,17 @@ Result: Implemented Interactive Help System (Spec 17).
 - Refactored `Watcher` to use a self-documenting `CommandDoc` registry for easier maintenance.
 Next Steps: Deploy and verify.
 ---
+
+---
+Date: 2026-01-04
+Action: Features
+Result: Implemented Attended Automation (Spec 18).
+- Updated `MarketProvider` to support `PlaceOrder` (Market Order).
+- Enhanced `TelegramListener` to support Interactive Buttons (CallbackQuery).
+- Implemented `Watcher` logic for Manual Confirmation of SL/TP triggers:
+    - Temporal Gate (TTL) to expire old confirmations.
+    - Deviation Gate (Price Check) to prevent stale execution.
+    - `PendingAction` state management.
+- Added `Quantity` field to `Position` model for accurate sizing.
+Next Steps: Deploy and verify user flow.
+---

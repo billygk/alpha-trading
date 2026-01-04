@@ -23,6 +23,15 @@ type Watcher struct {
 	mu             sync.RWMutex
 	lastStreamTime time.Time // Track last update for fallback logic
 	commands       []CommandDoc
+	pendingActions map[string]PendingAction
+	config         *config.Config
+}
+
+type PendingAction struct {
+	Ticker       string
+	Action       string // "SELL" (for now)
+	TriggerPrice float64
+	Timestamp    time.Time
 }
 
 type CommandDoc struct {
@@ -31,7 +40,7 @@ type CommandDoc struct {
 	Example     string
 }
 
-func New(provider market.MarketProvider, streamer market.StreamProvider) *Watcher {
+func New(cfg *config.Config, provider market.MarketProvider, streamer market.StreamProvider) *Watcher {
 	// Load initial state into memory
 	s, err := storage.LoadState()
 	if err != nil {
@@ -43,6 +52,8 @@ func New(provider market.MarketProvider, streamer market.StreamProvider) *Watche
 		streamer:       streamer,
 		state:          s,
 		lastStreamTime: time.Now(), // Assume fresh start
+		pendingActions: make(map[string]PendingAction),
+		config:         cfg,
 		commands: []CommandDoc{
 			{"/status", "Current portfolio status and equity", "/status"},
 			{"/list", "List active positions", "/list"},
@@ -89,20 +100,45 @@ func (w *Watcher) handleStreamUpdate(ticker string, price float64) {
 	w.lastStreamTime = time.Now()
 
 	// Check positions for this ticker
-	for i, pos := range w.state.Positions {
+	for _, pos := range w.state.Positions {
 		if pos.Status != "ACTIVE" || pos.Ticker != ticker {
 			continue
 		}
 
 		// Check triggers (Stop Loss / Take Profit)
-		if price <= pos.StopLoss {
-			telegram.Notify(fmt.Sprintf("⚡ *STREAM ALER: STOP LOSS HIT*\nAsset: %s\nPrice: $%.2f\nAction: SELL REQUIRED", pos.Ticker, price))
-			w.state.Positions[i].Status = "TRIGGERED_SL"
-			w.saveStateAsync() // Persist change
-		} else if price >= pos.TakeProfit {
-			telegram.Notify(fmt.Sprintf("⚡ *STREAM ALERT: TARGET REACHED*\nAsset: %s\nPrice: $%.2f\nAction: TAKE PROFIT", pos.Ticker, price))
-			w.state.Positions[i].Status = "TRIGGERED_TP"
-			w.saveStateAsync() // Persist change
+		if price <= pos.StopLoss || price >= pos.TakeProfit {
+			actionType := "STOP LOSS"
+			if price >= pos.TakeProfit {
+				actionType = "TAKE PROFIT"
+			}
+
+			// Debounce/Check if already pending
+			if _, exists := w.pendingActions[ticker]; exists {
+				continue
+			}
+
+			// Create Pending Action
+			triggerType := "SL"
+			if price >= pos.TakeProfit {
+				triggerType = "TP"
+			}
+
+			w.pendingActions[ticker] = PendingAction{
+				Ticker:       ticker,
+				Action:       "SELL", // Always sell for TP/SL
+				TriggerPrice: price,
+				Timestamp:    time.Now(),
+			}
+
+			// Send Interactive Message
+			msg := fmt.Sprintf("⚡ *STREAM ALERT: %s*\nAsset: %s\nPrice: $%.2f\nAction: SELL REQUIRED", actionType, pos.Ticker, price)
+
+			buttons := []telegram.Button{
+				{Text: "✅ CONFIRM", CallbackData: fmt.Sprintf("CONFIRM_%s_%s", triggerType, ticker)},
+				{Text: "❌ CANCEL", CallbackData: fmt.Sprintf("CANCEL_%s_%s", triggerType, ticker)},
+			}
+
+			telegram.SendInteractiveMessage(msg, buttons)
 		}
 	}
 }

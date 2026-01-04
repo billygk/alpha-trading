@@ -7,6 +7,7 @@ package models
 // They tell the JSON encoder/decoder which keys to map to these fields.
 type Position struct {
 	Ticker     string  `json:"ticker"`      // The stock symbol (e.g., "AAPL")
+	Quantity   float64 `json:"quantity"`    // Number of shares held
 	EntryPrice float64 `json:"entry_price"` // Price at which we bought
 	StopLoss   float64 `json:"stop_loss"`   // Price at which we sell to limit loss
 	TakeProfit float64 `json:"take_profit"` // Price at which we sell to take profit

@@ -16,6 +16,7 @@ type MarketProvider interface {
 	GetEquity() (float64, error)
 	GetClock() (*alpaca.Clock, error)
 	SearchAssets(query string) ([]alpaca.Asset, error)
+	PlaceOrder(ticker string, qty float64, side string) error
 }
 
 // AlpacaProvider is a concrete implementation of MarketProvider for the Alpaca API.

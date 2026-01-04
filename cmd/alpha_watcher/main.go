@@ -41,7 +41,7 @@ func main() {
 	defer streamer.Close()
 
 	// Watcher (The core logic)
-	w := watcher.New(marketProvider, streamer)
+	w := watcher.New(cfg, marketProvider, streamer)
 
 	// 3. Start Telegram Command Listener (Background)
 	// We pass the watcher to the listener so it can query state/uptime
@@ -50,7 +50,7 @@ func main() {
 	// Let's check how we started it before.
 	// Previously: go telegram.StartListener(ctx, w.HandleCommand)
 	// That remains valid since w.HandleCommand signature hasn't changed.
-	go telegram.StartListener(w.HandleCommand)
+	go telegram.StartListener(w.HandleCommand, w.HandleCallback)
 
 	// 4. Setup Signal Handling (Graceful Shutdown)
 	c := make(chan os.Signal, 1)
