@@ -8,11 +8,10 @@ import (
 	"syscall"
 	"time"
 
-	// Import our local internal packages
 	"alpha_trading/internal/config"
 	"alpha_trading/internal/market"
-	"alpha_trading/internal/notifications"
 	"alpha_trading/internal/storage"
+	"alpha_trading/internal/telegram" // Replaces internal/notifications
 	"alpha_trading/internal/watcher"
 )
 
@@ -24,21 +23,31 @@ func main() {
 	setupLogging()
 	config.Load() // Load env vars
 
-	// 2. Setup Signal Handling (Graceful Shutdown)
-	// We create a channel to listen for OS signals (like Ctrl+C or kill).
-	// 'chan' is a typed conduit for sending/receiving values.
-	c := make(chan os.Signal, 1)
+	// 2. Setup Dependencies
+	// Initialize the market provider (Alpaca)
+	provider := market.NewAlpacaProvider()
 
-	// Notify causes package signal to relay incoming signals to c.
+	// Initialize the Watcher service with the provider
+	// This now loads the initial state into memory
+	w := watcher.New(provider)
+
+	// 3. Start Telegram Command Listener (Background)
+	// We run this in a goroutine so it doesn't block the main loop
+	go telegram.StartListener(w.HandleCommand)
+
+	// 4. Setup Signal Handling (Graceful Shutdown)
+	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 
-	// Start a goroutine (lightweight thread) to handle the shutdown.
-	// This runs in the background while main() continues.
 	go func() {
-		<-c // Block here until a value is received from the channel
+		<-c
 		log.Println("⚠️ Watcher Shutting Down: System signal received.")
 
 		// Perform cleanup: Save state one last time
+		// Note: Since Watcher saves on every Poll, and we don't have pending in-memory changes
+		// that aren't on disk (unless we interrupted exactly during a write),
+		// loading from disk is generally safe. For a more robust solution,
+		// we might ask Watcher to flush its state.
 		state, err := storage.LoadState()
 		if err == nil {
 			state.LastSync = time.Now().In(config.CetLoc).Format(time.RFC3339)
@@ -48,20 +57,13 @@ func main() {
 			log.Printf("Error loading state during shutdown: %v", err)
 		}
 
-		notifications.Notify("⚠️ Watcher Shutting Down: System signal received.")
-		os.Exit(0) // Exit the program immediately
+		telegram.Notify("⚠️ Watcher Shutting Down: System signal received.")
+		os.Exit(0)
 	}()
-
-	// 3. Setup Dependencies
-	// Initialize the market provider (Alpaca)
-	provider := market.NewAlpacaProvider()
-
-	// Initialize the Watcher service with the provider
-	w := watcher.New(provider)
 
 	log.Println("Alpha Watcher v1.9.0-Refactored Initialized")
 
-	// 4. Main Loop
+	// 5. Main Loop
 	// 'for {}' is an infinite loop in Go (like while(true)).
 	for {
 		w.Poll() // Do one check cycle
@@ -70,7 +72,8 @@ func main() {
 		nextTick := time.Now().In(config.CetLoc).Add(1 * time.Hour)
 		log.Printf("Next check scheduled for: %s", nextTick.Format("2006-01-02 15:04:05 MST"))
 
-		// Sleep pauses the current goroutine (main thread) for the duration.
+		// Sleep pauses the main thread.
+		// The Telegram listener continues to run in its own goroutine.
 		time.Sleep(1 * time.Hour)
 	}
 }
@@ -79,20 +82,13 @@ func main() {
 
 // setupLogging configures logs to write to both the file and the console.
 func setupLogging() {
-	// Open (or create) the log file for appending.
 	f, err := os.OpenFile(LogFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		log.Printf("Failed to open log file: %v", err)
 		return
 	}
 
-	// MultiWriter allows writing to multiple destinations at once.
 	mw := io.MultiWriter(os.Stdout, f)
 	log.SetOutput(mw)
-
-	// SetFlags(0) removes the default timestamp from the log package,
-	// because we might want to control the timestamp format ourselves elsewhere,
-	// or in this case, we rely on the system or just simple messages.
-	// (Note: standard log.Printf usually adds timestamps if flags aren't 0)
 	log.SetFlags(0)
 }

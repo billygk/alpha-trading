@@ -86,3 +86,10 @@ Action: Operations
 Result: Created `init-scripts/alpha-watcher.service` for systemd integration on Ubuntu.
 Next Steps: Deploy to GCP and enable service.
 ---
+
+---
+Date: 2026-01-04
+Action: Features
+Result: Implemented Telegram Command Listener (/status, /list, /ping) with Access Control and RWMutex for thread safety.
+Next Steps: Deploy and test interactions.
+---
