@@ -30,6 +30,8 @@ The application can be configured via the `.env` file. If these variables are mi
 | `WATCHER_MAX_LOG_SIZE_MB` | `5` | Maximum size of `watcher.log` before rotation. |
 | `WATCHER_MAX_LOG_BACKUPS` | `3` | Number of old log files to keep. |
 | `WATCHER_POLL_INTERVAL` | `60` | Time in minutes between market checks. |
+| `CONFIRMATION_TTL_SEC` | `300` | Seconds before a pending confirmation expires (5 mins). |
+| `CONFIRMATION_MAX_DEVIATION_PCT` | `0.005` | Max price deviation (0.5%) allowed between trigger and confirmation. |
 
 
 ## Running

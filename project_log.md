@@ -171,3 +171,10 @@ Result: Implemented Attended Automation (Spec 18).
 - Added `Quantity` field to `Position` model for accurate sizing.
 Next Steps: Deploy and verify user flow.
 ---
+
+---
+Date: 2026-01-04
+Action: Documentation
+Result: Updated `.env` and `README.md` with new Attended Automation configuration parameters (`CONFIRMATION_TTL_SEC`, `CONFIRMATION_MAX_DEVIATION_PCT`).
+Next Steps: Deploy.
+---
