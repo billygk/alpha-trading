@@ -3,6 +3,7 @@ package watcher
 import (
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -17,12 +18,13 @@ import (
 var startTime = time.Now()
 
 type Watcher struct {
-	provider       market.MarketProvider
-	state          models.PortfolioState
-	mu             sync.RWMutex
-	commands       []CommandDoc
-	pendingActions map[string]PendingAction
-	config         *config.Config
+	provider         market.MarketProvider
+	state            models.PortfolioState
+	mu               sync.RWMutex
+	commands         []CommandDoc
+	pendingActions   map[string]PendingAction
+	pendingProposals map[string]PendingProposal
+	config           *config.Config
 }
 
 type PendingAction struct {
@@ -30,6 +32,16 @@ type PendingAction struct {
 	Action       string // "SELL" (for now)
 	TriggerPrice float64
 	Timestamp    time.Time
+}
+
+type PendingProposal struct {
+	Ticker     string
+	Qty        float64
+	Price      float64
+	TotalCost  float64
+	StopLoss   float64
+	TakeProfit float64
+	Timestamp  time.Time
 }
 
 type CommandDoc struct {
@@ -46,10 +58,11 @@ func New(cfg *config.Config, provider market.MarketProvider) *Watcher {
 	}
 
 	w := &Watcher{
-		provider:       provider,
-		state:          s,
-		pendingActions: make(map[string]PendingAction),
-		config:         cfg,
+		provider:         provider,
+		state:            s,
+		pendingActions:   make(map[string]PendingAction),
+		pendingProposals: make(map[string]PendingProposal),
+		config:           cfg,
 		commands: []CommandDoc{
 			{"/status", "Current portfolio status and equity", "/status"},
 			{"/list", "List active positions", "/list"},
@@ -58,6 +71,7 @@ func New(cfg *config.Config, provider market.MarketProvider) *Watcher {
 			{"/search", "Search for assets by name/ticker", "/search Apple"},
 			{"/ping", "Check bot latency", "/ping"},
 			{"/help", "Show this help message", "/help"},
+			{"/buy", "Propose a new trade", "/buy AAPL 1 200 220"},
 		},
 	}
 
@@ -108,9 +122,75 @@ func (w *Watcher) HandleCommand(cmd string) string {
 		return w.searchAssets(query)
 	case "/help":
 		return w.getHelp()
+	case "/buy":
+		return w.handleBuyCommand(parts)
 	default:
 		return "Unknown command. Try /help for a list of commands."
 	}
+}
+
+func (w *Watcher) handleBuyCommand(parts []string) string {
+	// /buy AAPL 1 210.50 255.00
+	if len(parts) != 5 {
+		return "Usage: /buy <ticker> <qty> <sl> <tp>"
+	}
+
+	ticker := strings.ToUpper(parts[1])
+	qty, err1 := strconv.ParseFloat(parts[2], 64)
+	sl, err2 := strconv.ParseFloat(parts[3], 64)
+	tp, err3 := strconv.ParseFloat(parts[4], 64)
+
+	if err1 != nil || err2 != nil || err3 != nil {
+		return "⚠️ Invalid number format. Use dots for decimals."
+	}
+
+	// 1. Validation Gate
+	price, err := w.provider.GetPrice(ticker)
+	if err != nil {
+		return fmt.Sprintf("⚠️ Could not fetch price for %s.", ticker)
+	}
+
+	totalCost := price * qty
+	buyingPower, err := w.provider.GetBuyingPower()
+	if err != nil {
+		log.Printf("Error fetching BP: %v", err)
+		return "⚠️ Error checking buying power."
+	}
+
+	if totalCost > buyingPower {
+		return fmt.Sprintf("❌ Insufficient Buying Power.\nRequired: $%.2f\nAvailable: $%.2f", totalCost, buyingPower)
+	}
+
+	// Store Proposal
+	w.mu.Lock()
+	w.pendingProposals[ticker] = PendingProposal{
+		Ticker:     ticker,
+		Qty:        qty,
+		Price:      price,
+		TotalCost:  totalCost,
+		StopLoss:   sl,
+		TakeProfit: tp,
+		Timestamp:  time.Now(),
+	}
+	w.mu.Unlock()
+
+	// Response with Buttons
+	msg := fmt.Sprintf("📝 *TRADE PROPOSAL*\n"+
+		"Asset: %s\n"+
+		"Qty: %.2f\n"+
+		"Price: $%.2f\n"+
+		"Total: $%.2f\n"+
+		"SL: $%.2f | TP: $%.2f\n"+
+		"Confirm Execution?",
+		ticker, qty, price, totalCost, sl, tp)
+
+	buttons := []telegram.Button{
+		{Text: "✅ EXECUTE", CallbackData: fmt.Sprintf("EXECUTE_BUY_%s", ticker)},
+		{Text: "❌ CANCEL", CallbackData: fmt.Sprintf("CANCEL_BUY_%s", ticker)},
+	}
+
+	telegram.SendInteractiveMessage(msg, buttons)
+	return "" // Message sent interactively
 }
 
 func (w *Watcher) getHelp() string {

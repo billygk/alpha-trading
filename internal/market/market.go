@@ -17,6 +17,7 @@ type MarketProvider interface {
 	GetClock() (*alpaca.Clock, error)
 	SearchAssets(query string) ([]alpaca.Asset, error)
 	PlaceOrder(ticker string, qty float64, side string) error
+	GetBuyingPower() (float64, error)
 }
 
 // AlpacaProvider is a concrete implementation of MarketProvider for the Alpaca API.
@@ -58,6 +59,15 @@ func (a *AlpacaProvider) GetEquity() (float64, error) {
 	}
 	// InexactFloat64 converts the decimal type to a standard float64.
 	return acct.Equity.InexactFloat64(), nil
+}
+
+// GetBuyingPower fetches the current buying power.
+func (a *AlpacaProvider) GetBuyingPower() (float64, error) {
+	acct, err := a.tradeClient.GetAccount()
+	if err != nil {
+		return 0, err
+	}
+	return acct.BuyingPower.InexactFloat64(), nil
 }
 
 // GetClock fetches the market clock (open/close status).

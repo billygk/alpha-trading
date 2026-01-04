@@ -1,6 +1,7 @@
 package watcher
 
 import (
+	"alpha_trading/internal/models"
 	"fmt"
 	"log"
 	"strings"
@@ -12,6 +13,11 @@ func (w *Watcher) HandleCallback(callbackID, data string) string {
 	parts := strings.Split(data, "_")
 	if len(parts) < 3 {
 		return "⚠️ Invalid callback data."
+	}
+
+	// Special Case for BUY flow
+	if strings.HasPrefix(data, "EXECUTE_BUY_") || strings.HasPrefix(data, "CANCEL_BUY_") {
+		return w.handleBuyCallback(data)
 	}
 
 	action := parts[0] // CONFIRM or CANCEL
@@ -93,4 +99,60 @@ func (w *Watcher) HandleCallback(callbackID, data string) string {
 	}
 
 	return "Unknown action."
+}
+
+func (w *Watcher) handleBuyCallback(data string) string {
+	parts := strings.Split(data, "_")
+	// EXECUTE_BUY_TICKER or CANCEL_BUY_TICKER
+	if len(parts) < 3 {
+		return "⚠️ Invalid buy callback data."
+	}
+	action := parts[0] // EXECUTE or CANCEL
+	ticker := parts[2]
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	proposal, exists := w.pendingProposals[ticker]
+	if !exists {
+		return fmt.Sprintf("⚠️ Proposal for %s expired or not found.", ticker)
+	}
+	delete(w.pendingProposals, ticker) // Cleanup
+
+	if action == "CANCEL" {
+		return fmt.Sprintf("❌ Purchase of %s cancelled.", ticker)
+	}
+
+	if action == "EXECUTE" {
+		// 1. Re-Verify Price (Slippage check? Optional but good)
+		// For now, trust the user click, but maybe check price hasn't jumped 50%?
+		// Let's keep it simple: Market Order.
+
+		err := w.provider.PlaceOrder(ticker, proposal.Qty, "buy")
+		if err != nil {
+			log.Printf("Buy Execution Error: %v", err)
+			return fmt.Sprintf("❌ Buy Execution Failed: %v", err)
+		}
+
+		// 2. Add to State
+		newPos := models.Position{
+			Ticker:          ticker,
+			Quantity:        proposal.Qty,
+			EntryPrice:      proposal.Price, // Approx
+			StopLoss:        proposal.StopLoss,
+			TakeProfit:      proposal.TakeProfit,
+			Status:          "ACTIVE",
+			HighWaterMark:   proposal.Price,
+			TrailingStopPct: 0, // Could be added to /buy command later
+			ThesisID:        fmt.Sprintf("MANUAL_%d", time.Now().Unix()),
+		}
+
+		w.state.Positions = append(w.state.Positions, newPos)
+		w.saveStateAsync()
+
+		return fmt.Sprintf("✅ PURCHASED: %.2f %s @ Market.\nSL: $%.2f | TP: $%.2f\nTracking Active.",
+			proposal.Qty, ticker, proposal.StopLoss, proposal.TakeProfit)
+	}
+
+	return "Unknown buy action."
 }

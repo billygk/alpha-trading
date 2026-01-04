@@ -197,3 +197,15 @@ Result: Implemented Virtual Trailing Stop (Spec 21).
     - Triggers "TRAILING STOP" alert with interactive confirmation buttons.
 Next Steps: Implement Point 22 (Trade Proposal System).
 ---
+
+---
+Date: 2026-01-04
+Action: Features
+Result: Implemented Trade Proposal System (Spec 22).
+- Added `GetBuyingPower` to `MarketProvider`.
+- Implemented `/buy <ticker> <qty> <sl> <tp>` command.
+- Added validation for Buying Power and Price.
+- Implemented `PendingProposal` workflow with [EXECUTE] / [CANCEL] buttons in Telegram.
+- Execution places Market Order and adds position to State Tracking (Status: ACTIVE).
+Next Steps: Implement Point 23 (Scanner).
+---
