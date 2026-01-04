@@ -209,3 +209,13 @@ Result: Implemented Trade Proposal System (Spec 22).
 - Execution places Market Order and adds position to State Tracking (Status: ACTIVE).
 Next Steps: Implement Point 23 (Scanner).
 ---
+
+---
+Date: 2026-01-04
+Action: Features
+Result: Implemented Market Intelligence Scanner (Spec 23).
+- Implemented `/scan <sector>` command logic.
+- Defined static sector map for `biotech`, `metals`, `energy`, `defense`.
+- Returns real-time prices for major sector ETFs and leaders (e.g., URA, XLE, GLD).
+Next Steps: Implement Point 24 (State Versioning).
+---

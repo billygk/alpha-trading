@@ -187,18 +187,28 @@ You are an expert Golang Developer and System Architect. You are building a high
   - Upon [✅ EXECUTE], call alpaca.PlaceOrder.
   - Update portfolio_state.json with Status: "OPEN", HighWaterMark: price, and EntryPrice: price.
 
-## 23. Initial Discovery Logic (The "Scanner" Light)
+## 23. Market Intelligence Command Handler (Sector Scanning)
 
-1. Objective: Quick sector health checks via /scan <sector>.
-2. Sectors:
-  - biotech: XBI, VRTX, AMGN.
-  - metals: GLD, SLV, COPX.
-  - energy: URA (Uranium), CCJ (Cameco), XLE (Energy).
-  - defense: ITA (Defense), LMT (Lockheed), RTX (Raytheon).
-3. Logic: Return latest prices for the hardcoded watchlist in each category.
-4. Exclusion: NO crypto assets until Point 25 is requested.
+1. Objective: Implement a command handler for /scan <sector> to check the health of target equities.
+2. Technical Implementation:
+  - Create a static map within the market package: map[string][]string where the key is the sector name and values are ticker symbols.
+3. Sectors to include:
+  - biotech: ["XBI", "VRTX", "AMGN"]
+  - metals: ["GLD", "SLV", "COPX"]
+  - energy: ["URA", "CCJ", "XLE"]
+  - defense: ["ITA", "LMT", "RTX"]
+4. When the command is received, iterate through the tickers, fetch GetLatestTrade for each, and format a consolidated Telegram response.
+5. Constraint: Do not hardcode prices. Always fetch fresh data via the Alpaca REST client.
 
-## 24. Portfolio State Versioning
+## 24. State Schema Migration & Version Management
 
-1. Logic: Update version to 1.2.
-2. Migration: Ensure the bot can load 1.1 files and add missing fields (HighWaterMark, TrailingStopPct) with sensible defaults (0.0).
+1. Objective: Update the storage layer to handle schema evolution.
+2. Technical Implementation:
+  - Update PortfolioState struct Version field to default to 1.2.
+  - Add a Migrate() method to the storage package.
+3. When loading portfolio_state.json, if the loaded version is < 1.2, the function must:
+    - Initialize HighWaterMark to the current EntryPrice for all existing positions.
+    - Set TrailingStopPct to a default of 0.0.
+    - Update the version in memory and trigger an immediate saveState().
+4. Verification: Ensure the migration is atomic and logged as an INFO event.
+

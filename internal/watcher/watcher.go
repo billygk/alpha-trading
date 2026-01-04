@@ -17,6 +17,13 @@ import (
 
 var startTime = time.Now()
 
+var sectors = map[string][]string{
+	"biotech": {"XBI", "VRTX", "AMGN"},
+	"metals":  {"GLD", "SLV", "COPX"},
+	"energy":  {"URA", "CCJ", "XLE"},
+	"defense": {"ITA", "LMT", "RTX"},
+}
+
 type Watcher struct {
 	provider         market.MarketProvider
 	state            models.PortfolioState
@@ -72,6 +79,7 @@ func New(cfg *config.Config, provider market.MarketProvider) *Watcher {
 			{"/ping", "Check bot latency", "/ping"},
 			{"/help", "Show this help message", "/help"},
 			{"/buy", "Propose a new trade", "/buy AAPL 1 200 220"},
+			{"/scan", "Check sector health", "/scan energy"},
 		},
 	}
 
@@ -124,9 +132,37 @@ func (w *Watcher) HandleCommand(cmd string) string {
 		return w.getHelp()
 	case "/buy":
 		return w.handleBuyCommand(parts)
+	case "/scan":
+		return w.handleScanCommand(parts)
 	default:
 		return "Unknown command. Try /help for a list of commands."
 	}
+}
+
+func (w *Watcher) handleScanCommand(parts []string) string {
+	if len(parts) < 2 {
+		return "Usage: /scan <sector>\nAvailable: biotech, metals, energy, defense"
+	}
+
+	sectorKey := strings.ToLower(parts[1])
+	tickers, exists := sectors[sectorKey]
+	if !exists {
+		return fmt.Sprintf("⚠️ Unknown sector '%s'.\nAvailable: biotech, metals, energy, defense", sectorKey)
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("🔋 *SECTOR REPORT: %s*\n", strings.ToUpper(sectorKey)))
+
+	for _, ticker := range tickers {
+		price, err := w.provider.GetPrice(ticker)
+		if err != nil {
+			sb.WriteString(fmt.Sprintf("• %s: ⚠️ Err\n", ticker))
+			continue
+		}
+		sb.WriteString(fmt.Sprintf("• %s: $%.2f\n", ticker, price))
+	}
+
+	return sb.String()
 }
 
 func (w *Watcher) handleBuyCommand(parts []string) string {
