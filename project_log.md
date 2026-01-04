@@ -93,3 +93,26 @@ Action: Features
 Result: Implemented Telegram Command Listener (/status, /list, /ping) with Access Control and RWMutex for thread safety.
 Next Steps: Deploy and test interactions.
 ---
+
+---
+Date: 2026-01-04
+Action: Resilience & Operations
+Result: 
+- Implemented Atomic State Persistence using temp file and `os.Rename` to prevent data corruption.
+- Implemented Log Rotation (5MB limit, 3 backups) via custom `internal/logger` package.
+Next Steps: Test and Deploy.
+---
+
+---
+Date: 2026-01-04
+Action: Configuration Features
+Result: Implemented Environment-Only Configuration (Spec 13.1). Application now fully configurable via .env (PollInterval, LogSize, etc.) with safe defaults.
+Next Steps: Deploy and verify.
+---
+
+---
+Date: 2026-01-04
+Action: Documentation
+Result: Updated .env with default configuration values and added detailed Configuration Reference table to README.md.
+Next Steps: Deploy.
+---

@@ -77,3 +77,37 @@ You are an expert Golang Developer and System Architect. You are building a high
 - /list: List all active positions and their current distance from Stop Loss.
 - /ping: Simple connectivity check.
 5. Ensure the bot ignores messages from any other chat_id.
+
+## 12. Atomic State Persistence
+
+1. Refactor saveState() to use an "Atomic Write" pattern.
+2. Logic: Write the JSON to a temporary file (e.g., portfolio_state.json.tmp), then use os.Rename to overwrite the original file.
+3. This ensures that even if the process crashes or the disk is full during the write, the original portfolio_state.json remains intact and uncorrupted.
+
+## 13. Log Rotation & Management
+
+1. Implement basic internal log rotation or provide a logrotate configuration file for the GCP box.
+2. If internal: When watcher.log reaches 5MB, rename it to watcher.log.1 and start a new file. Keep a maximum of 3 old log files.
+3. This prevents the application from consuming all available disk space over months of operation.
+
+## 13.1. Environment-Only Configuration System
+1. Create a Config struct to centralize all "tweakable" parameters.
+2. Parameters to include:
+- LogLevel (INFO, DEBUG, ERROR).
+- MaxLogSizeMB (Default 5).
+- MaxLogBackups (Default 3).
+- PollIntervalMins (Default 60).
+3. Implementation:
+- The bot must use the .env file (via godotenv) as the only external source of configuration.
+- No JSON or YAML fallback files are permitted.
+- The Agent must implement a "LoadConfig" function that checks for environment variables (e.g., WATCHER_LOG_LEVEL, WATCHER_POLL_INTERVAL).
+- MANDATORY: If an environment variable is missing, the code must fall back to hardcoded "Sensible Defaults" defined within the Go struct.
+4. Refactor the existing Logger and Polling logic to consume values from this centralized Config object.
+
+## 14. Real-time Market Data (Alpaca WebSockets)
+
+1. Transition the core monitoring logic from 1-hour polling to Alpaca's Streaming SDK (WebSockets).
+2. The bot must subscribe to trades for all tickers listed in portfolio_state.json.
+3. Implement a "Stream Reconnection" logic: if the WebSocket drops, the bot must log the event and attempt to reconnect with exponential backoff.
+4. Maintain the "Polling" logic as a fallback: if the WebSocket is down for more than 5 minutes, perform a manual REST poll of all positions.
+

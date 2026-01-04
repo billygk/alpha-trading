@@ -47,12 +47,47 @@ func LoadState() (models.PortfolioState, error) {
 	return s, json.Unmarshal(b, &s)
 }
 
-// SaveState writes the current state to disk.
+// SaveState writes the current state to disk using an atomic write pattern.
+// 1. Write to a temporary file.
+// 2. Sync to ensure data is on disk.
+// 3. Rename temporary file to destination (atomic operation).
 func SaveState(s models.PortfolioState) {
 	// MarshalIndent makes the JSON human-readable (pretty-printed) with 2-space indentation.
-	b, _ := json.MarshalIndent(s, "", "  ")
+	b, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		log.Printf("ERROR: Failed to marshal state: %v", err)
+		return
+	}
 
-	// WriteFile writes the bytes to the file, creating it if needed.
-	// 0644 is the file permission (Read/Write for owner, Read-only for others).
-	_ = os.WriteFile(StateFile, b, 0644)
+	// Create a temporary file in the same directory to ensure atomic rename works across filesystems
+	// "portfolio_state.json.tmp"
+	tmpFile := StateFile + ".tmp"
+	f, err := os.Create(tmpFile)
+	if err != nil {
+		log.Printf("ERROR: Failed to create temp state file: %v", err)
+		return
+	}
+
+	// Ensure we close the file, even if writing fails
+	defer f.Close()
+
+	// Write the JSON data
+	if _, err := f.Write(b); err != nil {
+		log.Printf("ERROR: Failed to write to temp state file: %v", err)
+		return
+	}
+
+	// Force sync to disk to prevent data loss on power failure before rename
+	if err := f.Sync(); err != nil {
+		log.Printf("ERROR: Failed to sync temp state file: %v", err)
+		return
+	}
+
+	// Close explicitly before renaming (essential on Windows)
+	f.Close()
+
+	// Atomic Rename
+	if err := os.Rename(tmpFile, StateFile); err != nil {
+		log.Printf("ERROR: Failed to replace state file (atomic rename): %v", err)
+	}
 }

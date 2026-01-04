@@ -1,7 +1,6 @@
 package main
 
 import (
-	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -9,6 +8,7 @@ import (
 	"time"
 
 	"alpha_trading/internal/config"
+	"alpha_trading/internal/logger"
 	"alpha_trading/internal/market"
 	"alpha_trading/internal/storage"
 	"alpha_trading/internal/telegram" // Replaces internal/notifications
@@ -20,8 +20,11 @@ const LogFile = "watcher.log"
 // main is the entry point of the application.
 func main() {
 	// 1. Initialization
-	setupLogging()
-	config.Load() // Load env vars
+	// Load configuration first to get logger settings
+	cfg := config.Load()
+
+	// Setup logging with configured values
+	logger.Setup(LogFile, cfg.MaxLogSizeMB, cfg.MaxLogBackups)
 
 	// 2. Setup Dependencies
 	// Initialize the market provider (Alpaca)
@@ -69,26 +72,19 @@ func main() {
 		w.Poll() // Do one check cycle
 
 		// Calculate next run time for logging purposes
-		nextTick := time.Now().In(config.CetLoc).Add(1 * time.Hour)
+		// Use Configured Interval
+		interval := time.Duration(cfg.PollIntervalMins) * time.Minute
+		nextTick := time.Now().In(config.CetLoc).Add(interval)
 		log.Printf("Next check scheduled for: %s", nextTick.Format("2006-01-02 15:04:05 MST"))
 
-		// Sleep pauses the main thread.
-		// The Telegram listener continues to run in its own goroutine.
-		time.Sleep(1 * time.Hour)
+		// Sleep using configured interval
+		time.Sleep(interval)
 	}
 }
 
 // --- LOGGING ---
 
-// setupLogging configures logs to write to both the file and the console.
-func setupLogging() {
-	f, err := os.OpenFile(LogFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		log.Printf("Failed to open log file: %v", err)
-		return
-	}
+// --- LOGGING ---
 
-	mw := io.MultiWriter(os.Stdout, f)
-	log.SetOutput(mw)
-	log.SetFlags(0)
-}
+// setupLogging is replaced by logger.Setup from internal/logger package
+// The logger package now handles file rotation (5MB limit, 3 backups)
