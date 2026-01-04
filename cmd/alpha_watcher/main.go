@@ -35,13 +35,8 @@ func main() {
 	// Market Provider (Alpaca)
 	marketProvider := market.NewAlpacaProvider()
 
-	// Stream Provider (Alpaca WebSockets)
-	streamer := market.NewAlpacaStreamer()
-	// Ensure streamer is closed on shutdown
-	defer streamer.Close()
-
 	// Watcher (The core logic)
-	w := watcher.New(cfg, marketProvider, streamer)
+	w := watcher.New(cfg, marketProvider)
 
 	// 3. Start Telegram Command Listener (Background)
 	// We pass the watcher to the listener so it can query state/uptime

@@ -164,17 +164,24 @@ Action: Features
 Result: Implemented Attended Automation (Spec 18).
 - Updated `MarketProvider` to support `PlaceOrder` (Market Order).
 - Enhanced `TelegramListener` to support Interactive Buttons (CallbackQuery).
-- Implemented `Watcher` logic for Manual Confirmation of SL/TP triggers:
-    - Temporal Gate (TTL) to expire old confirmations.
-    - Deviation Gate (Price Check) to prevent stale execution.
-    - `PendingAction` state management.
-- Added `Quantity` field to `Position` model for accurate sizing.
+- Implemented `Watcher` logic for Manual Confirmation of SL/TP triggers.
 Next Steps: Deploy and verify user flow.
 ---
 
 ---
 Date: 2026-01-04
 Action: Documentation
-Result: Updated `.env` and `README.md` with new Attended Automation configuration parameters (`CONFIRMATION_TTL_SEC`, `CONFIRMATION_MAX_DEVIATION_PCT`).
+Result: Updated `.env` and `README.md` with new Attended Automation configuration parameters.
 Next Steps: Deploy.
+---
+
+---
+Date: 2026-01-04
+Action: Features & Refactoring
+Result: 
+- Decommissioned WebSockets (Spec 19). Removed `stream.go` and Streamer dependency.
+- Implemented Polling-Based Attended Automation (Spec 20).
+- Refactored `Watcher.Poll()` to include SL/TP trigger checks and interactive confirmation workflow.
+- Application now operates cleanly with only REST API calls.
+Next Steps: Deploy and Validate.
 ---

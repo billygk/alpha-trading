@@ -148,4 +148,21 @@ You are an expert Golang Developer and System Architect. You are building a high
 6. Cleanup: Purge the pending action from memory regardless of outcome.
 
 
+## 19. WebSocket Removal & REST Restoration (NEW)
+
+1. Decommission WebSockets: Remove all code related to AlpacaStreamer, stream.Connect(), and IEX/SIP WebSocket subscriptions.
+2. Clean Dependencies: Remove any unused WebSocket-related imports or packages (e.g., Alpaca Streaming SDK if not used elsewhere).
+3. Core Logic Reversion: Revert the Watcher to be 100% powered by the polling interval defined in WATCHER_POLL_INTERVAL (Point 13.1).
+4. Outbound Only: Ensure the application makes only standard HTTPS REST calls to Alpaca.
+
+## 20. Polling-Based Attended Automation (NEW)
+
+1. Integration: Refactor the SL/TP trigger logic from Point 18 to run inside the main polling loop.
+2. Batch Processing: During each poll cycle, the bot must:
+  - Fetch the latest price for ALL tickers in portfolio_state.json using Alpaca's GetLatestTrade (REST).
+  - Compare latest prices against StopLoss and TakeProfit targets in the state file.
+3. Trigger Workflow: If a price crosses a threshold during a poll:
+  - Initiate the confirmation workflow defined in Point 18.3 (Telegram buttons).
+  - Use the price fetched during the poll as the trigger_price.
+4. Safety: Ensure the Temporal Gate and Deviation Gate from Point 18.4 still apply, using the time of the poll as the reference.
 
