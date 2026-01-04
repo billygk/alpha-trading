@@ -131,3 +131,29 @@ Result: Implemented Real-time Market Data (Spec 14).
 - Added Polling Fallback logic.
 Next Steps: Deploy and Validate Stream connectivity.
 ---
+Date: 2026-01-04
+Action: Features
+Result: Implemented Market Query Engine (Spec 15).
+- Added `/price <ticker>` command to fetch real-time quotes.
+- Added `/market` command to check Open/Closed status and next session times.
+Next Steps: Implement Spec 16 (Search & Discovery).
+---
+Date: 2026-01-04
+Action: Features
+Result: Implemented Search & Discovery (Spec 16).
+- Added `/search <query>` to find US Equities by ticker or name.
+- Implemented client-side filtering (memory-efficient) to return top 5 matches.
+Next Steps: Implement Spec 17 (Interactive Help System).
+---
+Date: 2026-01-04
+Action: Bugfix
+Result: Fixed runtime panic in `GetPrice` caused by a nil pointer dereference when a ticker was valid but returned no trade data (e.g., specific market condition or inactive stock). Added nil checks.
+Next Steps: Continue with Spec 17.
+---
+Date: 2026-01-04
+Action: Features
+Result: Implemented Interactive Help System (Spec 17).
+- Added `/help` command.
+- Refactored `Watcher` to use a self-documenting `CommandDoc` registry for easier maintenance.
+Next Steps: Deploy and verify.
+---

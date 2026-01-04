@@ -111,3 +111,26 @@ You are an expert Golang Developer and System Architect. You are building a high
 3. Implement a "Stream Reconnection" logic: if the WebSocket drops, the bot must log the event and attempt to reconnect with exponential backoff.
 4. Maintain the "Polling" logic as a fallback: if the WebSocket is down for more than 5 minutes, perform a manual REST poll of all positions.
 
+## 15. Market Query Engine (Telegram)
+
+1. Extend the Telegram command handler to support:
+2. /price <ticker>: The bot must query Alpaca's GetLatestTrade for any provided ticker (even if not in the state file) and return the current price.
+3. /market: Query Alpaca's GetClock and return if the market is currently OPEN or CLOSED, and the time until the next state change.
+4. Implementation Note: Must use the existing Telegram goroutine and respect the sync.RWMutex for state-related queries.
+5. Verification: Ensure that if a ticker is invalid, the bot returns a clean "Ticker not found" message instead of crashing.
+
+## 16. Search & Discovery (Minimalist)
+
+1. Prompt for Agent: Implement /search <query>:
+2. The bot should use Alpaca's GetAssets with a filter to find symbols matching the query string.
+3. Return a maximum of 5 results (Ticker - Name) to prevent Telegram character overflow.
+4. Constraint: This must be a memory-efficient call. Do not cache the entire asset list in RAM. Use alpaca.GetAssets with the status=active and asset_class=us_equity parameters.
+
+## 17. Interactive Help System (Self-Documentation)
+
+1. Prompt for Agent: Implement a /help command in the Telegram handler.
+2. The command must return a comprehensive list of all active commands: /status, /list, /ping, /price, /market, and /search.
+3. Each command must include a one-line description and example usage (e.g., /price AAPL).
+4. Implementation Requirement: Store these descriptions in a structured way (e.g., a map or a slice of structs) within the code so that the help system is easy to update in future tasks.
+5. Formatting: Use Markdown formatting for the response to ensure triggers and descriptions are clearly separated.
+

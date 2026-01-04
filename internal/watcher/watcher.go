@@ -22,6 +22,13 @@ type Watcher struct {
 	state          models.PortfolioState
 	mu             sync.RWMutex
 	lastStreamTime time.Time // Track last update for fallback logic
+	commands       []CommandDoc
+}
+
+type CommandDoc struct {
+	Name        string
+	Description string
+	Example     string
 }
 
 func New(provider market.MarketProvider, streamer market.StreamProvider) *Watcher {
@@ -36,6 +43,15 @@ func New(provider market.MarketProvider, streamer market.StreamProvider) *Watche
 		streamer:       streamer,
 		state:          s,
 		lastStreamTime: time.Now(), // Assume fresh start
+		commands: []CommandDoc{
+			{"/status", "Current portfolio status and equity", "/status"},
+			{"/list", "List active positions", "/list"},
+			{"/price", "Get real-time price for a ticker", "/price AAPL"},
+			{"/market", "Check market status", "/market"},
+			{"/search", "Search for assets by name/ticker", "/search Apple"},
+			{"/ping", "Check bot latency", "/ping"},
+			{"/help", "Show this help message", "/help"},
+		},
 	}
 
 	// Initialize Stream Subscription
@@ -117,9 +133,90 @@ func (w *Watcher) HandleCommand(cmd string) string {
 		return w.getStatus()
 	case "/list":
 		return w.getList()
+	case "/price":
+		if len(parts) < 2 {
+			return "Usage: /price <ticker>"
+		}
+		return w.getPrice(strings.ToUpper(parts[1]))
+	case "/market":
+		return w.getMarketStatus()
+	case "/search":
+		if len(parts) < 2 {
+			return "Usage: /search <query>"
+		}
+		// "Apple Inc" -> "Apple Inc"
+		query := strings.Join(parts[1:], " ")
+		return w.searchAssets(query)
+	case "/help":
+		return w.getHelp()
 	default:
-		return "Unknown command. Try /status, /list, or /ping."
+		return "Unknown command. Try /help for a list of commands."
 	}
+}
+
+func (w *Watcher) getHelp() string {
+	var sb strings.Builder
+	sb.WriteString("🤖 *ALPHA WATCHER COMMANDS*\n\n")
+	for _, cmd := range w.commands {
+		sb.WriteString(fmt.Sprintf("🔹 *%s*\n%s\n`%s`\n\n", cmd.Name, cmd.Description, cmd.Example))
+	}
+	return sb.String()
+}
+
+func (w *Watcher) searchAssets(query string) string {
+	assets, err := w.provider.SearchAssets(query)
+	if err != nil {
+		log.Printf("Error searching assets: %v", err)
+		return "⚠️ Error: Could not search assets."
+	}
+
+	if len(assets) == 0 {
+		return fmt.Sprintf("🔍 No results found for '%s'.", query)
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("🔍 *Results for '%s'*\n", query))
+	for _, asset := range assets {
+		sb.WriteString(fmt.Sprintf("- *%s*: %s\n", asset.Symbol, asset.Name))
+	}
+	return sb.String()
+}
+
+func (w *Watcher) getPrice(ticker string) string {
+	price, err := w.provider.GetPrice(ticker)
+
+	if err != nil || price == 0 {
+		log.Printf("Price lookup failed for %s (err: %v, price: %v). Falling back to search.", ticker, err, price)
+		searchResult := w.searchAssets(ticker)
+		return fmt.Sprintf("⚠️ Price not found for '%s'. Did you mean:\n\n%s", ticker, searchResult)
+	}
+	return fmt.Sprintf("💲 *%s*: $%.2f", ticker, price)
+}
+
+func (w *Watcher) getMarketStatus() string {
+	clock, err := w.provider.GetClock()
+	if err != nil {
+		log.Printf("Error fetching market clock: %v", err)
+		return "⚠️ Error: Could not fetch market status."
+	}
+
+	status := "CLOSED 🔴"
+	if clock.IsOpen {
+		status = "OPEN 🟢"
+	}
+
+	nextSession := "Next Open"
+	eventTime := clock.NextOpen
+	if clock.IsOpen {
+		nextSession = "Closes"
+		eventTime = clock.NextClose
+	}
+
+	// Format time until next event
+	until := time.Until(eventTime.Round(time.Minute)).Round(time.Minute)
+
+	return fmt.Sprintf("🏛️ *MARKET STATUS*\nState: %s\n%s: %s (in %s)",
+		status, nextSession, eventTime.Format("15:04 MST"), until)
 }
 
 func (w *Watcher) getStatus() string {

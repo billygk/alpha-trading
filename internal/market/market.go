@@ -1,6 +1,8 @@
 package market
 
 import (
+	"strings"
+
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
 	"github.com/alpacahq/alpaca-trade-api-go/v3/marketdata"
 )
@@ -12,6 +14,8 @@ import (
 type MarketProvider interface {
 	GetPrice(ticker string) (float64, error)
 	GetEquity() (float64, error)
+	GetClock() (*alpaca.Clock, error)
+	SearchAssets(query string) ([]alpaca.Asset, error)
 }
 
 // AlpacaProvider is a concrete implementation of MarketProvider for the Alpaca API.
@@ -39,6 +43,9 @@ func (a *AlpacaProvider) GetPrice(ticker string) (float64, error) {
 	if err != nil {
 		return 0, err // Return 0 and the error if something fails
 	}
+	if trade == nil {
+		return 0, nil // Or a specific error like "no trade found"
+	}
 	return trade.Price, nil // Return the price and nil error if successful
 }
 
@@ -50,4 +57,38 @@ func (a *AlpacaProvider) GetEquity() (float64, error) {
 	}
 	// InexactFloat64 converts the decimal type to a standard float64.
 	return acct.Equity.InexactFloat64(), nil
+}
+
+// GetClock fetches the market clock (open/close status).
+func (a *AlpacaProvider) GetClock() (*alpaca.Clock, error) {
+	return a.tradeClient.GetClock()
+}
+
+// SearchAssets searches for assets matching the query string.
+// It fetches active US equities and filters them in memory.
+// Returns a maximum of 5 results.
+func (a *AlpacaProvider) SearchAssets(query string) ([]alpaca.Asset, error) {
+	status := "active"
+	class := "us_equity"
+	assets, err := a.tradeClient.GetAssets(alpaca.GetAssetsRequest{
+		Status:     status,
+		AssetClass: class,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var results []alpaca.Asset
+	queryLower := strings.ToLower(query)
+
+	for _, asset := range assets {
+		if strings.Contains(strings.ToLower(asset.Symbol), queryLower) ||
+			strings.Contains(strings.ToLower(asset.Name), queryLower) {
+			results = append(results, asset)
+			if len(results) >= 5 {
+				break
+			}
+		}
+	}
+	return results, nil
 }
