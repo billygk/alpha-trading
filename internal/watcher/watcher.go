@@ -17,24 +17,90 @@ import (
 var startTime = time.Now()
 
 type Watcher struct {
-	provider market.MarketProvider
-	state    models.PortfolioState
-	mu       sync.RWMutex // Protects state
+	provider       market.MarketProvider
+	streamer       market.StreamProvider // New dependency
+	state          models.PortfolioState
+	mu             sync.RWMutex
+	lastStreamTime time.Time // Track last update for fallback logic
 }
 
-func New(provider market.MarketProvider) *Watcher {
+func New(provider market.MarketProvider, streamer market.StreamProvider) *Watcher {
 	// Load initial state into memory
 	s, err := storage.LoadState()
 	if err != nil {
 		log.Printf("CRITICAL: Could not load initial state: %v", err)
-		// We might want to panic or handle this better, but for now we proceed with empty?
-		// storage.LoadState already returns a genesis state if missing, so this error is real I/O.
 	}
 
-	return &Watcher{
-		provider: provider,
-		state:    s,
+	w := &Watcher{
+		provider:       provider,
+		streamer:       streamer,
+		state:          s,
+		lastStreamTime: time.Now(), // Assume fresh start
 	}
+
+	// Initialize Stream Subscription
+	w.initStream()
+
+	return w
+}
+
+func (w *Watcher) initStream() {
+	// Extract tickers
+	var tickers []string
+	for _, pos := range w.state.Positions {
+		if pos.Status == "ACTIVE" {
+			tickers = append(tickers, pos.Ticker)
+		}
+	}
+
+	if len(tickers) == 0 {
+		return
+	}
+
+	log.Printf("Subscribing to stream for: %v", tickers)
+	err := w.streamer.Subscribe(tickers, w.handleStreamUpdate)
+	if err != nil {
+		log.Printf("ERROR: Failed to subscribe to stream: %v", err)
+	}
+}
+
+// handleStreamUpdate processes real-time price updates
+func (w *Watcher) handleStreamUpdate(ticker string, price float64) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	// Update liveness timestamp
+	w.lastStreamTime = time.Now()
+
+	// Check positions for this ticker
+	for i, pos := range w.state.Positions {
+		if pos.Status != "ACTIVE" || pos.Ticker != ticker {
+			continue
+		}
+
+		// Check triggers (Stop Loss / Take Profit)
+		if price <= pos.StopLoss {
+			telegram.Notify(fmt.Sprintf("⚡ *STREAM ALER: STOP LOSS HIT*\nAsset: %s\nPrice: $%.2f\nAction: SELL REQUIRED", pos.Ticker, price))
+			w.state.Positions[i].Status = "TRIGGERED_SL"
+			w.saveStateAsync() // Persist change
+		} else if price >= pos.TakeProfit {
+			telegram.Notify(fmt.Sprintf("⚡ *STREAM ALERT: TARGET REACHED*\nAsset: %s\nPrice: $%.2f\nAction: TAKE PROFIT", pos.Ticker, price))
+			w.state.Positions[i].Status = "TRIGGERED_TP"
+			w.saveStateAsync() // Persist change
+		}
+	}
+}
+
+// saveStateAsync saves without blocking, or just call storage?
+// For simplicity and safety, we just call storage.SaveState since it's fast enough on low volume.
+func (w *Watcher) saveStateAsync() {
+	// Note: We are already under lock in handleStreamUpdate,
+	// so reading w.state is safe, but SaveState reads it too?
+	// Storage.SaveState takes a copy of the struct by value, so it is safe.
+	// However, IO operations inside a lock are generally bad.
+	// But given the simplicity and low freq of triggers, it's acceptable for now.
+	// Optimally: send to a channel.
+	storage.SaveState(w.state)
 }
 
 // HandleCommand processes inbound Telegram commands safely.

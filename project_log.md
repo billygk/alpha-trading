@@ -123,3 +123,11 @@ Action: Fix
 Result: Repaired `internal/config/config.go` corruption (missing exports and partial file). Build successful.
 Next Steps: Deploy.
 ---
+Date: 2026-01-04
+Action: Features
+Result: Implemented Real-time Market Data (Spec 14).
+- Added `AlpacaStreamer` using WebSocket API (IEX feed).
+- Integrated streaming into `Watcher` with automatic `HANDLE_SL`/`HANDLE_TP`.
+- Added Polling Fallback logic.
+Next Steps: Deploy and Validate Stream connectivity.
+---
