@@ -339,7 +339,7 @@ func (w *Watcher) Poll() {
 	}
 
 	// --- POSITION CHECK LOGIC ---
-	for _, pos := range w.state.Positions {
+	for i, pos := range w.state.Positions {
 		if pos.Status != "ACTIVE" {
 			continue
 		}
@@ -350,10 +350,27 @@ func (w *Watcher) Poll() {
 			continue
 		}
 
-		log.Printf("[%s] Current: $%.2f | SL: $%.2f | TP: $%.2f", pos.Ticker, price, pos.StopLoss, pos.TakeProfit)
+		// Update High Water Mark if applicable
+		if pos.HighWaterMark == 0 || price > pos.HighWaterMark {
+			log.Printf("[%s] New High Water Mark: $%.2f (Old: $%.2f)", pos.Ticker, price, pos.HighWaterMark)
+			w.state.Positions[i].HighWaterMark = price
+			pos.HighWaterMark = price // Update local copy for calculations below
+		}
 
-		// Check triggers (Stop Loss / Take Profit)
-		if price <= pos.StopLoss || price >= pos.TakeProfit {
+		log.Printf("[%s] Current: $%.2f | SL: $%.2f | TP: $%.2f | HWM: $%.2f", pos.Ticker, price, pos.StopLoss, pos.TakeProfit, pos.HighWaterMark)
+
+		// Check Trailing Stop
+		triggeredTS := false
+		if pos.TrailingStopPct > 0 && pos.HighWaterMark > 0 {
+			trailingTriggerPrice := pos.HighWaterMark * (1 - pos.TrailingStopPct/100)
+			if price <= trailingTriggerPrice {
+				triggeredTS = true
+				log.Printf("[%s] Trailing Stop Triggered! Price $%.2f <= Trigger $%.2f", pos.Ticker, price, trailingTriggerPrice)
+			}
+		}
+
+		// Check triggers (Stop Loss / Take Profit / Trailing Stop)
+		if price <= pos.StopLoss || price >= pos.TakeProfit || triggeredTS {
 			// Debounce/Check if already pending
 			if _, exists := w.pendingActions[pos.Ticker]; exists {
 				continue
@@ -364,12 +381,15 @@ func (w *Watcher) Poll() {
 			if price >= pos.TakeProfit {
 				actionType = "TAKE PROFIT"
 				triggerType = "TP"
+			} else if triggeredTS {
+				actionType = "TRAILING STOP"
+				triggerType = "TS"
 			}
 
 			// Create Pending Action
 			w.pendingActions[pos.Ticker] = PendingAction{
 				Ticker:       pos.Ticker,
-				Action:       "SELL", // Always sell for TP/SL
+				Action:       "SELL", // Always sell for TP/SL/TS
 				TriggerPrice: price,
 				Timestamp:    time.Now(),
 			}

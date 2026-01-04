@@ -166,3 +166,39 @@ You are an expert Golang Developer and System Architect. You are building a high
   - Use the price fetched during the poll as the trigger_price.
 4. Safety: Ensure the Temporal Gate and Deviation Gate from Point 18.4 still apply, using the time of the poll as the reference.
 
+## 21. Virtual Trailing Stop Logic (Profit Maximization)
+1. State Update: Add HighWaterMark (float64) and TrailingStopPct (float64) to the Position struct.
+2. Logic:
+  - If CurrentPrice > HighWaterMark, update HighWaterMark = CurrentPrice.
+  - Dynamic exit trigger: TriggerPrice = HighWaterMark * (1 - TrailingStopPct/100).
+3. Execution: If CurrentPrice <= TriggerPrice, initiate Attended Automation with the label "TRAILING STOP TRIGGERED".
+
+## 22. Trade Proposal & Manual Entry System (NEW)
+1. Objective: Allow the user to initiate new trades without manually editing portfolio_state.json.
+2. Command: Implement /buy <ticker> <quantity> <sl> <tp>.
+  - Example: /buy AAPL 1 210.50 255.00
+3. Validation Gate:
+  - Fetch latest price via REST.
+  - Calculate total cost and ensure it doesn't exceed Alpaca buying_power.
+4. Attended Workflow:
+  - Respond with: "PROPOSAL: Buy {{qty}} {{ticker}} @ ~${{price}}. Total: ${{cost}}. SL: {{sl}} | TP: {{tp}}. Confirm?"
+  - Provide [✅ EXECUTE] and [❌ CANCEL] buttons.
+5. Execution:
+  - Upon [✅ EXECUTE], call alpaca.PlaceOrder.
+  - Update portfolio_state.json with Status: "OPEN", HighWaterMark: price, and EntryPrice: price.
+
+## 23. Initial Discovery Logic (The "Scanner" Light)
+
+1. Objective: Quick sector health checks via /scan <sector>.
+2. Sectors:
+  - biotech: XBI, VRTX, AMGN.
+  - metals: GLD, SLV, COPX.
+  - energy: URA (Uranium), CCJ (Cameco), XLE (Energy).
+  - defense: ITA (Defense), LMT (Lockheed), RTX (Raytheon).
+3. Logic: Return latest prices for the hardcoded watchlist in each category.
+4. Exclusion: NO crypto assets until Point 25 is requested.
+
+## 24. Portfolio State Versioning
+
+1. Logic: Update version to 1.2.
+2. Migration: Ensure the bot can load 1.1 files and add missing fields (HighWaterMark, TrailingStopPct) with sensible defaults (0.0).

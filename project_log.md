@@ -185,3 +185,15 @@ Result:
 - Application now operates cleanly with only REST API calls.
 Next Steps: Deploy and Validate.
 ---
+
+---
+Date: 2026-01-04
+Action: Features
+Result: Implemented Virtual Trailing Stop (Spec 21).
+- Updated `models.Position` with `HighWaterMark` and `TrailingStopPct`.
+- Integrated logic into `Watcher.Poll`:
+    - Auto-update HighWaterMark when price peaks.
+    - Dynamic trigger calculation: `HWM * (1 - pct/100)`.
+    - Triggers "TRAILING STOP" alert with interactive confirmation buttons.
+Next Steps: Implement Point 22 (Trade Proposal System).
+---
