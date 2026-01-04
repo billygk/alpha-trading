@@ -219,3 +219,14 @@ Result: Implemented Market Intelligence Scanner (Spec 23).
 - Returns real-time prices for major sector ETFs and leaders (e.g., URA, XLE, GLD).
 Next Steps: Implement Point 24 (State Versioning).
 ---
+
+---
+Date: 2026-01-04
+Action: Features
+Result: Implemented Portfolio State Versioning (Spec 24).
+- Added `migrateState` logic to `internal/storage`.
+- System now automatically detects schema version `< 1.2` and upgrades it.
+- Populates `HighWaterMark` (from `EntryPrice`) and `TrailingStopPct` (0.0) for existing records.
+- Ensures forward compatibility of the `portfolio_state.json`.
+Next Steps: Monitor deployments.
+---

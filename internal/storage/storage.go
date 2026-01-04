@@ -21,7 +21,7 @@ func LoadState() (models.PortfolioState, error) {
 	if _, err := os.Stat(StateFile); os.IsNotExist(err) {
 		log.Println("State file missing, generating template...")
 		// Create a default initial state
-		s = models.PortfolioState{Version: "1.1", Positions: []models.Position{}}
+		s = models.PortfolioState{Version: "1.2", Positions: []models.Position{}}
 		// Save it immediately so next time we find it
 		SaveState(s)
 		return s, nil
@@ -44,7 +44,39 @@ func LoadState() (models.PortfolioState, error) {
 
 	// Unmarshal converts JSON bytes into our Go struct.
 	// We pass &s (pointer to s) so Unmarshal can modify s directly.
-	return s, json.Unmarshal(b, &s)
+	if err := json.Unmarshal(b, &s); err != nil {
+		return s, err
+	}
+
+	// CHECK FOR MIGRATION
+	if migrateState(&s) {
+		log.Printf("INFO: State migrated to version %s. Saving...", s.Version)
+		SaveState(s)
+	}
+
+	return s, nil
+}
+
+// migrateState handles schema evolution.
+// Returns true if changes were made and the state needs to be saved.
+func migrateState(s *models.PortfolioState) bool {
+	updated := false
+
+	// Migration: 1.1 -> 1.2 (Adding HighWaterMark & TrailingStopPct)
+	if s.Version < "1.2" {
+		log.Println("INFO: Migrating State Schema from 1.1 to 1.2")
+		for i := range s.Positions {
+			// Initialize HighWaterMark to EntryPrice if missing
+			if s.Positions[i].HighWaterMark == 0 {
+				s.Positions[i].HighWaterMark = s.Positions[i].EntryPrice
+			}
+			// TrailingStopPct defaults to 0 (float zero value), which is correct.
+		}
+		s.Version = "1.2"
+		updated = true
+	}
+
+	return updated
 }
 
 // SaveState writes the current state to disk using an atomic write pattern.
