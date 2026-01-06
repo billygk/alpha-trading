@@ -65,6 +65,7 @@ Then run it:
   - `watcher`: Main polling loop.
   - `models`: Data structures.
 
+
 Important: 
 - project_log.md should always be updated with the progress of the project.
 - Include details comments in code
