@@ -1,4 +1,4 @@
-# AI Coding Agent Specification: Alpha Watcher (Go)
+# Specification: Alpha Watcher (Go)
 
 ## 1. Role & Context
 You are an expert Golang Developer and System Architect. You are building a high-availability trading "Watcher" for a user with deep expertise in Linux, security, and networking.
@@ -17,7 +17,7 @@ You are an expert Golang Developer and System Architect. You are building a high
 - **State Persistence**: Maintain `portfolio_state.json` as the source of truth.
 - **Deployment Model**: Compile locally on Windows for Linux target: `GOOS=linux GOARCH=amd64 go build`.
 
-## 4. Current Prompt for Agent
+## 4. recheck the code
 "Analyze the existing alpha_watcher.go and portfolio_state.json. Ensure the environment variables for APCA_API_KEY_ID, APCA_API_SECRET_KEY, and APCA_API_BASE_URL are correctly mapped to the Alpaca Client initialization. Implement a 'Genesis State' check that creates a valid template JSON if the file is missing. Ensure the polling loop sleeps for exactly 1 hour and logs the next scheduled check time."
 
 ## 5. Security Protocol
@@ -100,7 +100,7 @@ You are an expert Golang Developer and System Architect. You are building a high
 3. Implementation:
 - The bot must use the .env file (via godotenv) as the only external source of configuration.
 - No JSON or YAML fallback files are permitted.
-- The Agent must implement a "LoadConfig" function that checks for environment variables (e.g., WATCHER_LOG_LEVEL, WATCHER_POLL_INTERVAL).
+- implement a "LoadConfig" function that checks for environment variables (e.g., WATCHER_LOG_LEVEL, WATCHER_POLL_INTERVAL).
 - MANDATORY: If an environment variable is missing, the code must fall back to hardcoded "Sensible Defaults" defined within the Go struct.
 4. Refactor the existing Logger and Polling logic to consume values from this centralized Config object.
 
@@ -284,8 +284,8 @@ Performance: Fetch market data (Clock, Account, Prices) in parallel using gorout
 Fallbacks: If Alpaca fails to return PreviousClose, skip the "Today P/L" section.
 
 ## 31. Unified Global State Version (v1.3)
-Requirement: Update state version to 1.3 to ensure the Agent recognizes these UI enhancements.
-Logic: No new fields required in the JSON for this, but the version bump ensures the Agent recompiles the notification templates and formatting logic.
+Requirement: Update state version to 1.3 to ensure the we recognize these UI enhancements.
+Logic: No new fields required in the JSON for this, but the version bump ensures the we recompile the notification templates and formatting logic.
 
 ## 32. Automated Operational Awareness (Scheduled Status) // NEW POINT
 Objective: Implement automated status pushes during active market hours to maintain user synchronization.
