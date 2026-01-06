@@ -33,6 +33,7 @@ type Watcher struct {
 	commands         []CommandDoc
 	pendingActions   map[string]PendingAction
 	pendingProposals map[string]PendingProposal
+	lastAlerts       map[string]time.Time // To prevent alert fatigue (Spec 38)
 	config           *config.Config
 }
 
@@ -72,6 +73,7 @@ func New(cfg *config.Config, provider market.MarketProvider) *Watcher {
 		state:            s,
 		pendingActions:   make(map[string]PendingAction),
 		pendingProposals: make(map[string]PendingProposal),
+		lastAlerts:       make(map[string]time.Time),
 		config:           cfg,
 		commands: []CommandDoc{
 			{"/status", "Current portfolio status and equity", "/status"},
@@ -81,7 +83,7 @@ func New(cfg *config.Config, provider market.MarketProvider) *Watcher {
 			{"/search", "Search for assets by name/ticker", "/search Apple"},
 			{"/ping", "Check bot latency", "/ping"},
 			{"/help", "Show this help message", "/help"},
-			{"/buy", "Propose a new trade", "/buy AAPL 1 200 220"},
+			{"/buy", "Propose a new trade", "/buy AAPL 1 200 [220]"},
 			{"/scan", "Check sector health", "/scan energy"},
 		},
 	}
@@ -173,13 +175,15 @@ func (w *Watcher) handleScanCommand(parts []string) string {
 }
 
 func (w *Watcher) handleBuyCommand(parts []string) string {
-	// /buy AAPL 1 210.50 255.00 [5.0]
-	if len(parts) < 5 || len(parts) > 6 {
-		return "Usage: /buy <ticker> <qty> <sl> <tp> [ts_pct]"
+	// 1. Parsing & Default Logic (Spec 37)
+	// /buy AAPL 1 200 [TP] [TS]
+	if len(parts) < 4 {
+		return "Usage: /buy <ticker> <qty> <sl> [tp] [ts_pct]"
 	}
 
-	// 1. Validation Gate (Duplicate Order Check)
 	ticker := strings.ToUpper(parts[1])
+
+	// 1.5 Validation Gate (Duplicate Order Check) - Restored
 	openOrders, err := w.provider.ListOrders("open")
 	if err == nil {
 		for _, o := range openOrders {
@@ -193,11 +197,18 @@ func (w *Watcher) handleBuyCommand(parts []string) string {
 
 	qty, err1 := decimal.NewFromString(parts[2])
 	sl, err2 := decimal.NewFromString(parts[3])
-	tp, err3 := decimal.NewFromString(parts[4])
 
+	// Optional TP
+	var tp decimal.Decimal
+	var err3 error
+	if len(parts) >= 5 && parts[4] != "0" {
+		tp, err3 = decimal.NewFromString(parts[4])
+	} // Else zero, handled below
+
+	// Optional TS
 	var tsPct decimal.Decimal
 	var err4 error
-	if len(parts) == 6 {
+	if len(parts) >= 6 {
 		tsPct, err4 = decimal.NewFromString(parts[5])
 	}
 
@@ -205,10 +216,17 @@ func (w *Watcher) handleBuyCommand(parts []string) string {
 		return "⚠️ Invalid number format. Use dots for decimals."
 	}
 
-	// 2. Price Check Gate
+	// 2. Price Check Gate (needed for Default TP calc)
 	price, err := w.provider.GetPrice(ticker)
 	if err != nil {
 		return fmt.Sprintf("⚠️ Could not fetch price for %s.", ticker)
+	}
+
+	// Calculate Default TP if missing (Spec 37)
+	if tp.IsZero() {
+		// Entry * (1 + Default/100)
+		multiplier := decimal.NewFromInt(1).Add(decimal.NewFromFloat(w.config.DefaultTakeProfitPct).Div(decimal.NewFromInt(100)))
+		tp = price.Mul(multiplier)
 	}
 
 	totalCost := price.Mul(qty)
@@ -853,6 +871,17 @@ func (w *Watcher) checkRisk() {
 		}
 	}
 
+	// --- PENDING ACTION CLEANUP ---
+	// Remove expired actions so we don't block new alerts forever if user ignores them.
+	ttl := time.Duration(w.config.ConfirmationTTLSec) * time.Second
+	for ticker, action := range w.pendingActions {
+		if time.Since(action.Timestamp) > ttl {
+			delete(w.pendingActions, ticker)
+			// Optional: Log or notify?
+			// log.Printf("Expired pending action for %s", ticker)
+		}
+	}
+
 	// --- POSITION CHECK LOGIC ---
 	for i, pos := range w.state.Positions {
 		if pos.Status != "ACTIVE" {
@@ -887,19 +916,37 @@ func (w *Watcher) checkRisk() {
 			}
 		}
 
+		triggeredSL := !pos.StopLoss.IsZero() && price.LessThanOrEqual(pos.StopLoss)
+		triggeredTP := !pos.TakeProfit.IsZero() && price.GreaterThanOrEqual(pos.TakeProfit)
+
 		// Check triggers (Stop Loss / Take Profit / Trailing Stop)
-		// We use strict > for TP and <= for SL
-		if price.LessThanOrEqual(pos.StopLoss) || price.GreaterThanOrEqual(pos.TakeProfit) || triggeredTS {
-			// Debounce/Check if already pending
+		if triggeredSL || triggeredTP || triggeredTS {
+			// 1. Debounce (Pending Action)
 			if _, exists := w.pendingActions[pos.Ticker]; exists {
 				continue
 			}
 
+			// 2. Alert Fatigue (Spec 38)
+			// Don't re-alert if we alerted recently (e.g., within 15 mins)
+			// Since PollInterval is usually 60m, this effectively limits to once per poll.
+			// But if Interval is small, this helps.
+			if lastAlert, ok := w.lastAlerts[pos.Ticker]; ok {
+				if time.Since(lastAlert) < 15*time.Minute {
+					continue
+				}
+			}
+
+			// 3. Precedence Logic (Spec 36)
+			// TP > SL > TS (SL is hard stop, usually takes precedence over TS if both hit)
 			actionType := "STOP LOSS"
 			triggerType := "SL"
-			if price.GreaterThanOrEqual(pos.TakeProfit) {
+
+			if triggeredTP {
 				actionType = "TAKE PROFIT"
 				triggerType = "TP"
+			} else if triggeredSL {
+				actionType = "STOP LOSS"
+				triggerType = "SL"
 			} else if triggeredTS {
 				actionType = "TRAILING STOP"
 				triggerType = "TS"
@@ -912,6 +959,9 @@ func (w *Watcher) checkRisk() {
 				TriggerPrice: price,
 				Timestamp:    time.Now(),
 			}
+
+			// Update Last Alert
+			w.lastAlerts[pos.Ticker] = time.Now()
 
 			// Send Interactive Message
 			msg := fmt.Sprintf("🚨 *POLL ALERT: %s*\nAsset: %s\nPrice: $%s\nAction: SELL REQUIRED", actionType, pos.Ticker, price.StringFixed(2))

@@ -329,3 +329,50 @@ Objective: Replace all float64 fields in portfolio_state.json and internal calcu
 Reasoning: To prevent IEEE 754 rounding errors in P/L and Trailing Stop calculations.
 Migration: The Migrate() function (Point 24) must handle the conversion from float strings to Decimal objects during the v1.3 upgrade.
 
+## 36. Take-Profit (TP) Execution Logic & Guardrails
+Objective: Standardize the behavior of the Take-Profit trigger to ensure consistency with the Human-in-the-Loop philosophy.
+Trigger Condition:
+During the polling cycle (Point 20), if CurrentPrice >= Position.TP:
+The bot MUST transition the position to a PENDING_EXIT state in memory.
+Send the "TAKE PROFIT" Telegram alert with [✅ CONFIRM] and [❌ CANCEL] buttons.
+Price Protection (The TP-Deviation Gate):
+Upon clicking [✅ CONFIRM], the bot must fetch a fresh price.
+Logic: If FreshPrice < (Position.TP * 0.995), notify the user: "⚠️ Price has slipped below 99.5% of TP. Manual review required."
+Interaction with Trailing Stop:
+The TP trigger MUST take precedence over the Trailing Stop if both are triggered in the same poll.
+
+## 37. Configurable Default Take-Profit Percentage
+Objective: Allow for automated TP calculation based on a global strategy setting while preserving manual overrides.
+Environment Variable:
+Add DEFAULT_TAKE_PROFIT_PCT to .env. (Example: DEFAULT_TAKE_PROFIT_PCT=10.0).
+Logic Integration:
+Update the /buy command (Point 22).
+If the <tp> parameter is provided as a number (e.g., 58.00), use that absolute price.
+NEW: If the <tp> parameter is omitted or passed as 0, the bot must calculate the TP: EntryPrice * (1 + (DEFAULT_TAKE_PROFIT_PCT / 100)).
+Validation:
+If DEFAULT_TAKE_PROFIT_PCT is missing from .env, fallback to a hardcoded "Sensible Default" of 15.0%.
+The bot must confirm the calculated TP price in the Telegram "Proposal" message before the user clicks [✅ EXECUTE].
+
+## 38. Strict "Confirm-to-Sell" Enforcement
+Objective: Ensure the bot never autonomously liquidates a position based on Take-Profit triggers without explicit user authorization.
+Execution Gate:
+The ONLY state that triggers an alpaca.PlaceOrder(Side: Sell) is the successful callback from the Telegram [✅ CONFIRM] button.
+Default Behavior (The "Hold" Fallback):
+In all other cases—including button expiration (TTL), clicking [❌ CANCEL], bot crashes, or network timeouts—the bot MUST maintain the position and do nothing.
+Re-Trigger Management:
+If a TP alert is ignored or cancelled, the bot must not re-alert for that position in the same polling cycle.
+Implement a LastAlertTime timestamp per position to prevent "Alert Fatigue."
+
+## 39. Universal Temporal Gate (CONFIRMATION_TTL_SEC)
+Objective: Prevent the execution of stale trade proposals or exit triggers due to delayed user interaction.
+Configuration:
+Read CONFIRMATION_TTL_SEC from .env. (Default: 300).
+Logic Enforcement:
+Every interactive button (Buy, Sell, TP, SL, Trailing) MUST include a Timestamp in its metadata.
+Upon callback, calculate: Elapsed = CurrentTime - TriggerTime.
+Execution Decision:
+IF Elapsed > CONFIRMATION_TTL_SEC: Abort, notify user ("⚠️ Action Expired"), and purge PendingAction.
+IF Elapsed <= CONFIRMATION_TTL_SEC: Proceed to Deviation Gate and then execution.
+UI Feedback:
+Include footer: ⏱️ Valid for {{TTL}} seconds.
+

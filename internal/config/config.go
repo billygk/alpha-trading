@@ -22,6 +22,7 @@ type Config struct {
 	PollIntervalMins            int     // Environment: WATCHER_POLL_INTERVAL
 	ConfirmationTTLSec          int     // Environment: CONFIRMATION_TTL_SEC
 	ConfirmationMaxDeviationPct float64 // Environment: CONFIRMATION_MAX_DEVIATION_PCT
+	DefaultTakeProfitPct        float64 // Environment: DEFAULT_TAKE_PROFIT_PCT
 	AutoStatusEnabled           bool    // Environment: AUTO_STATUS_ENABLED
 }
 
@@ -80,6 +81,7 @@ func Load() *Config {
 		PollIntervalMins:            getEnvAsInt("WATCHER_POLL_INTERVAL", 60),
 		ConfirmationTTLSec:          getEnvAsInt("CONFIRMATION_TTL_SEC", 300),                 // Default 5 mins
 		ConfirmationMaxDeviationPct: getEnvAsFloat64("CONFIRMATION_MAX_DEVIATION_PCT", 0.005), // Default 0.5%
+		DefaultTakeProfitPct:        getEnvAsFloat64("DEFAULT_TAKE_PROFIT_PCT", 15.0),         // Default 15.0%
 		AutoStatusEnabled:           getEnvAsBool("AUTO_STATUS_ENABLED", false),               // Default false
 	}
 

@@ -22,8 +22,8 @@ func (w *Watcher) HandleCallback(callbackID, data string) string {
 		return w.handleBuyCallback(data)
 	}
 
-	action := parts[0] // CONFIRM or CANCEL
-	// trigger := parts[1]  // SL or TP (unused but part of protocol)
+	action := parts[0]  // CONFIRM or CANCEL
+	trigger := parts[1] // SL, TP, TS
 	ticker := parts[2]
 
 	w.mu.Lock()
@@ -48,13 +48,47 @@ func (w *Watcher) HandleCallback(callbackID, data string) string {
 			return fmt.Sprintf("⏳ TIMEOUT: Confirmation for %s is too old (> %ds). Action aborted.", ticker, w.config.ConfirmationTTLSec)
 		}
 
-		// 2. Deviation Gate
-		currentPrice, err := w.provider.GetPrice(ticker)
-		if err != nil {
-			log.Printf("Error fetching price for deviation check: %v", err)
-			return fmt.Sprintf("⚠️ Error fetching current price for %s. Aborted safety check.", ticker)
+		// 1.5 Find Position (Used for TP Guardrail & Execution)
+		posIndex := -1
+		var position models.Position
+		activeFound := false
+
+		for i, p := range w.state.Positions {
+			if p.Ticker == ticker && p.Status == "ACTIVE" {
+				position = p
+				posIndex = i
+				activeFound = true
+				break
+			}
 		}
 
+		if !activeFound {
+			msg := fmt.Sprintf("❌ Execution Failed: Could not find active position for %s.", ticker)
+			log.Printf("[FATAL_TRADE_ERROR] %s", msg)
+			return msg
+		}
+
+		// 2. Refresh Price
+		currentPrice, err := w.provider.GetPrice(ticker)
+		if err != nil {
+			log.Printf("Error fetching price for checks: %v", err)
+			return fmt.Sprintf("⚠️ Error fetching current price for %s. Aborted.", ticker)
+		}
+
+		// 3. TP Price Protection Guardrail (Spec 36)
+		if trigger == "TP" {
+			// Gate: FreshPrice < (Position.TP * 0.995)
+			// Guardrail: 0.5% slippage below Target
+			thresholdRatio := decimal.NewFromFloat(0.995)
+			thresholdPrice := position.TakeProfit.Mul(thresholdRatio)
+
+			if currentPrice.LessThan(thresholdPrice) {
+				return fmt.Sprintf("⚠️ TP GUARDRAIL: Price $%s has slipped below 99.5%% of TP ($%s). Manual review required.", currentPrice.StringFixed(2), position.TakeProfit.StringFixed(2))
+			}
+		}
+
+		// 4. Standard Deviation Gate (Spec 18)
+		// deviation = abs(current - trigger_from_pending) / trigger_from_pending
 		deviation := currentPrice.Sub(pending.TriggerPrice).Div(pending.TriggerPrice)
 		if deviation.IsNegative() {
 			deviation = deviation.Neg() // Abs
@@ -67,23 +101,10 @@ func (w *Watcher) HandleCallback(callbackID, data string) string {
 			return fmt.Sprintf("⚠️ PRICE DEVIATION: Price changed by %s%% (Max %s%%). Action aborted for safety.", displayDev, displayMax)
 		}
 
-		// 3. Execution
-		// 3. Execution (Sell)
-		// Qty 0 is not safe, we need strict position sizing from state.
-
-		qty := decimal.Zero
-		posIndex := -1
-		for i, p := range w.state.Positions {
-			if p.Ticker == ticker && p.Status == "ACTIVE" {
-				qty = p.Quantity // Assuming struct has Quantity
-				posIndex = i
-				break
-			}
-		}
-
+		// 5. Execution (Sell)
+		qty := position.Quantity
 		if qty.IsZero() {
-			msg := fmt.Sprintf("❌ Execution Failed: Could not find active position quantity for %s.", ticker)
-			log.Printf("[FATAL_TRADE_ERROR] %s", msg)
+			msg := fmt.Sprintf("❌ Execution Failed: Quantity is zero for %s.", ticker)
 			return msg
 		}
 

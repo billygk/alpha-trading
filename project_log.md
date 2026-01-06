@@ -275,5 +275,16 @@ Next Steps: Monitor deployments.
 - Started implementation of Specs 33 (Broker-First Dashboard), 34 (Scheduled Heartbeat), 35 (Decimal Transition).
 - Objective: Switch to shopspring/decimal for precision and make /status rely on Alpaca as source of truth.
 
+
+---
+## [2026-01-06] Implemented Specs 36, 37, 38
+- Action: Implemented Take-Profit logic, Configurable Defaults, and Strict Confirm-to-Sell.
+- Result: 
+  - Spec 36: TP now triggers alert with Precedence (TP > SL > TS). Added TP Guardrail (99.5% slippage check) in callback.
+  - Spec 37: Added `DEFAULT_TAKE_PROFIT_PCT` (default 15.0%) to .env. `/buy` command uses this default if TP is omitted or 0.
+  - Spec 38: Implemented `lastAlerts` map to prevent Alert Fatigue (15 min cooldown). Pending Actions are cleaned up if expired.
+- Next Steps: Deploy and Validate.
+---
+
 <!-- END_OF_LOG -->
 
