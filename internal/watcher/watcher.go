@@ -262,8 +262,10 @@ func (w *Watcher) handleBuyCommand(parts []string) string {
 		"Total: $%s\n"+
 		"SL: $%s | TP: $%s\n"+
 		"TS: %s%%\n"+
-		"Confirm Execution?",
-		ticker, qty.StringFixed(2), price.StringFixed(2), totalCost.StringFixed(2), sl.StringFixed(2), tp.StringFixed(2), tsPct.StringFixed(2))
+		"Confirm Execution?\n\n"+
+		"⏱️ Valid for %d seconds.",
+		ticker, qty.StringFixed(2), price.StringFixed(2), totalCost.StringFixed(2), sl.StringFixed(2), tp.StringFixed(2), tsPct.StringFixed(2),
+		w.config.ConfirmationTTLSec)
 
 	buttons := []telegram.Button{
 		{Text: "✅ EXECUTE", CallbackData: fmt.Sprintf("EXECUTE_BUY_%s", ticker)},
@@ -964,7 +966,8 @@ func (w *Watcher) checkRisk() {
 			w.lastAlerts[pos.Ticker] = time.Now()
 
 			// Send Interactive Message
-			msg := fmt.Sprintf("🚨 *POLL ALERT: %s*\nAsset: %s\nPrice: $%s\nAction: SELL REQUIRED", actionType, pos.Ticker, price.StringFixed(2))
+			msg := fmt.Sprintf("🚨 *POLL ALERT: %s*\nAsset: %s\nPrice: $%s\nAction: SELL REQUIRED\n\n⏱️ Valid for %d seconds.",
+				actionType, pos.Ticker, price.StringFixed(2), w.config.ConfirmationTTLSec)
 
 			buttons := []telegram.Button{
 				{Text: "✅ CONFIRM", CallbackData: fmt.Sprintf("CONFIRM_%s_%s", triggerType, pos.Ticker)},

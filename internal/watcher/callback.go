@@ -173,6 +173,12 @@ func (w *Watcher) handleBuyCallback(data string) string {
 	}
 	delete(w.pendingProposals, ticker) // Cleanup
 
+	// 1. Temporal Gate (Spec 39)
+	ttl := time.Duration(w.config.ConfirmationTTLSec) * time.Second
+	if time.Since(proposal.Timestamp) > ttl {
+		return fmt.Sprintf("⏳ TIMEOUT: Proposal for %s expired (> %ds). Action aborted.", ticker, w.config.ConfirmationTTLSec)
+	}
+
 	if action == "CANCEL" {
 		return fmt.Sprintf("❌ Purchase of %s cancelled.", ticker)
 	}

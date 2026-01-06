@@ -286,5 +286,15 @@ Next Steps: Monitor deployments.
 - Next Steps: Deploy and Validate.
 ---
 
+
+---
+## [2026-01-06] Implemented Spec 39
+- Action: Implemented Universal Temporal Gate (TTL).
+- Result: 
+  - Buy Proposals and Risk Alerts now include a "Valid for X seconds" footer.
+  - Callbacks enforce `CONFIRMATION_TTL_SEC` (default 300s) on both Buy and Sell workflows.
+- Next Steps: Deploy.
+---
+
 <!-- END_OF_LOG -->
 
