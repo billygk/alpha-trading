@@ -13,6 +13,8 @@ import (
 	"alpha_trading/internal/models"
 	"alpha_trading/internal/storage"
 	"alpha_trading/internal/telegram"
+
+	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
 )
 
 var startTime = time.Now()
@@ -321,35 +323,185 @@ func (w *Watcher) getMarketStatus() string {
 
 func (w *Watcher) getStatus() string {
 	w.mu.RLock()
-	defer w.mu.RUnlock()
-
-	activeCount := 0
-	for _, pos := range w.state.Positions {
-		if pos.Status == "ACTIVE" {
-			activeCount++
+	// Copy active positions to release lock during network calls
+	var activePositions []models.Position
+	for _, p := range w.state.Positions {
+		if p.Status == "ACTIVE" {
+			activePositions = append(activePositions, p)
 		}
 	}
+	w.mu.RUnlock()
 
-	equity, err := w.provider.GetEquity()
+	// Parallel Fetching
+	var wg sync.WaitGroup
+	var mu sync.Mutex // For results map
+
+	type detailedPos struct {
+		Ticker    string
+		Qty       float64
+		Current   float64
+		PrevClose float64
+		Entry     float64
+		SL        float64
+		HWM       float64
+	}
+	posDetails := make(map[string]detailedPos)
+
+	var clock *alpaca.Clock
+	var equity float64
+	var errClock, errEquity error
+
+	// 1. Fetch System Level Data
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		clock, errClock = w.provider.GetClock()
+	}()
+	go func() {
+		defer wg.Done()
+		equity, errEquity = w.provider.GetEquity()
+	}()
+
+	// 2. Fetch Position Data
+	for _, p := range activePositions {
+		wg.Add(1)
+		go func(pos models.Position) {
+			defer wg.Done()
+			current, _ := w.provider.GetPrice(pos.Ticker)
+			bars, _ := w.provider.GetBars(pos.Ticker, 1)
+
+			prevClose := 0.0
+			if len(bars) > 0 {
+				prevClose = bars[len(bars)-1].Close
+			}
+
+			// If current price fetch failed, try to use bar close? No, keep 0 to show error.
+
+			mu.Lock()
+			posDetails[pos.Ticker] = detailedPos{
+				Ticker:    pos.Ticker,
+				Qty:       pos.Quantity,
+				Entry:     pos.EntryPrice,
+				Current:   current,
+				PrevClose: prevClose,
+				SL:        pos.StopLoss,
+				HWM:       pos.HighWaterMark,
+			}
+			mu.Unlock()
+		}(p)
+	}
+
+	wg.Wait()
+
+	// Format Output
+	var sb strings.Builder
+
+	// Header: Market Status
+	statusIcon := "🔴"
+	statusText := "CLOSED"
+	timeMsg := ""
+
+	if errClock == nil {
+		if clock.IsOpen {
+			statusIcon = "🟢"
+			statusText = "OPEN"
+			until := time.Until(clock.NextClose).Round(time.Minute)
+			timeMsg = fmt.Sprintf("Closes in: %s", until)
+		} else {
+			until := time.Until(clock.NextOpen).Round(time.Minute)
+			timeMsg = fmt.Sprintf("Opens in: %s", until)
+		}
+	} else {
+		statusText = "Unknown"
+	}
+
+	sb.WriteString(fmt.Sprintf("Market: %s %s\n%s\n\n", statusIcon, statusText, timeMsg))
+
+	// Positions Table
+	if len(activePositions) > 0 {
+		sb.WriteString("`Ticker | Price | DayP/L | TotP/L`\n")
+		sb.WriteString("`--------------------------------`\n")
+
+		totalDayPL := 0.0
+		totalUnrealizedPL := 0.0
+
+		for _, p := range activePositions {
+			d := posDetails[p.Ticker]
+			if d.Current == 0 {
+				sb.WriteString(fmt.Sprintf("`%-6s | ERR   |   -    |   -   `\n", d.Ticker))
+				continue
+			}
+
+			// Day P/L
+			dayPL := 0.0
+			dayPLStr := "   -  "
+			if d.PrevClose > 0 {
+				dayPL = (d.Current - d.PrevClose) * d.Qty
+				totalDayPL += dayPL
+				icon := "🟢"
+				if dayPL < 0 {
+					icon = "🔴"
+				}
+				dayPLStr = fmt.Sprintf("%s%.0f", icon, dayPL) // Compact logic? Spec doesn't specify precision for P/L but strictly space.
+				// "Use Monospaced formatting... 🟢/🔴"
+				// Let's use compact numbers to fit.
+			}
+
+			// Total P/L
+			totPL := (d.Current - d.Entry) * d.Qty
+			totalUnrealizedPL += totPL
+			totIcon := "🟢"
+			if totPL < 0 {
+				totIcon = "🔴"
+			}
+
+			// Format Row
+			// Ticker(6) | Price(7) | Day(6) | Tot(6)
+			// Truncate ticker to 5 chars max? Or just assume <6.
+
+			// Using dynamic padding?
+			// Let's try:
+			// `AAPL   | 210.50 | 🟢120  | 🟢450 `
+			// Limit float precision
+
+			sb.WriteString(fmt.Sprintf("`%-6s | %-6.2f | %s | %s%.0f`\n",
+				d.Ticker, d.Current, dayPLStr, totIcon, totPL))
+
+			// Context line (Spec 282: Strategic Context: Dist to SL, HWM)
+			// Small text or separate line?
+			// "Include... Distance to Stop Loss (%) and ... HighWaterMark"
+			// To keep dashboard clean, maybe add one line below?
+			distSL := "N/A"
+			if d.Current > 0 && d.SL > 0 {
+				pct := ((d.Current - d.SL) / d.Current) * 100
+				distSL = fmt.Sprintf("%.1f%%", pct)
+			}
+			sb.WriteString(fmt.Sprintf("      ↳ SL: %s | HWM: $%.2f\n", distSL, d.HWM))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Footer
 	equityStr := fmt.Sprintf("$%.2f", equity)
-	if err != nil {
-		equityStr = "Error"
+	if errEquity != nil {
+		equityStr = "Err"
 	}
 
 	uptime := time.Since(startTime).Round(time.Second)
 
-	// Fetch Pending Orders
+	// Pending Orders (Preserve Spec 26)
 	pendingMsg := ""
 	openOrders, err := w.provider.ListOrders("open")
 	if err == nil && len(openOrders) > 0 {
-		pendingMsg = "\n\n⏳ *PENDING ORDERS*:\n"
+		pendingMsg = "\n⏳ *PENDING ORDERS*:\n"
 		for _, o := range openOrders {
-			pendingMsg += fmt.Sprintf("• %s %s shares of %s (%s)\n", o.Side, o.Qty, o.Symbol, o.Status)
+			pendingMsg += fmt.Sprintf("• %s %s %s\n", o.Side, o.Qty, o.Symbol)
 		}
 	}
 
-	return fmt.Sprintf("📊 *STATUS REPORT*\nUptime: %s\nActive Positions: %d\nEquity: %s%s",
-		uptime, activeCount, equityStr, pendingMsg)
+	sb.WriteString(fmt.Sprintf("Equity: %s\nUptime: %s%s", equityStr, uptime, pendingMsg))
+
+	return sb.String()
 }
 
 func (w *Watcher) handleSellCommand(parts []string) string {

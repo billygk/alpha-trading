@@ -21,7 +21,7 @@ func LoadState() (models.PortfolioState, error) {
 	if _, err := os.Stat(StateFile); os.IsNotExist(err) {
 		log.Println("State file missing, generating template...")
 		// Create a default initial state
-		s = models.PortfolioState{Version: "1.2", Positions: []models.Position{}}
+		s = models.PortfolioState{Version: "1.3", Positions: []models.Position{}}
 		// Save it immediately so next time we find it
 		SaveState(s)
 		return s, nil
@@ -73,6 +73,14 @@ func migrateState(s *models.PortfolioState) bool {
 			// TrailingStopPct defaults to 0 (float zero value), which is correct.
 		}
 		s.Version = "1.2"
+		updated = true
+	}
+
+	// Migration: 1.2 -> 1.3 (Rich Dashboard / Status v2)
+	// No schema changes, just version bump to ensure compatibility checks
+	if s.Version < "1.3" {
+		log.Println("INFO: Migrating State Schema from 1.2 to 1.3")
+		s.Version = "1.3"
 		updated = true
 	}
 

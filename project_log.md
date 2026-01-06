@@ -184,13 +184,8 @@ Result:
 - Refactored `Watcher.Poll()` to include SL/TP trigger checks and interactive confirmation workflow.
 - Application now operates cleanly with only REST API calls.
 
-## [2026-01-06] Universal Exit & Deep Sync
-- Started implementation of Spec Points 27 (/sell) and 28 (/refresh).
-- Objective: Add manual liquidation command and state reconciliation.
 
-## [2026-01-06] Manual Sync & State Reconciliation
-- Started implementation of Spec Point 29 (Manual Sync Logic).
-- Objective: Enhance /refresh to handle discovered positions with specific initialization and warnings.
+
 
 
 Next Steps: Deploy and Validate.
@@ -251,5 +246,18 @@ Next Steps: Monitor deployments.
 ## [2026-01-06] Order State Synchronization
 - Started implementation of Spec Point 26 (Order State Synchronization).
 - Objective: Prevent duplicate orders, track queued orders, and sync /status with Alpaca.
+---
+
+## [2026-01-06] Universal Exit & Deep Sync
+- Started implementation of Spec Points 27 (/sell) and 28 (/refresh).
+- Objective: Add manual liquidation command and state reconciliation.
+
+## [2026-01-06] Manual Sync & State Reconciliation
+- Started implementation of Spec Point 29 (Manual Sync Logic).
+- Objective: Enhance /refresh to handle discovered positions with specific initialization and warnings.
+
+## [2026-01-06] Rich Dashboard & State Version Upgrade
+- Started implementation of Spec Point 30 (Rich Dashboard) and 31 (State Version 1.3).
+- Objective: Upgrade /status to show detailed P/L and context; bump version to 1.3.
 ---
 

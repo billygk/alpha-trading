@@ -2,6 +2,7 @@ package market
 
 import (
 	"strings"
+	"time"
 
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
 	"github.com/alpacahq/alpaca-trade-api-go/v3/marketdata"
@@ -22,6 +23,7 @@ type MarketProvider interface {
 	ListPositions() ([]alpaca.Position, error)
 	CancelOrder(orderID string) error
 	GetBuyingPower() (float64, error)
+	GetBars(ticker string, limit int) ([]marketdata.Bar, error)
 }
 
 // AlpacaProvider is a concrete implementation of MarketProvider for the Alpaca API.
@@ -106,4 +108,25 @@ func (a *AlpacaProvider) SearchAssets(query string) ([]alpaca.Asset, error) {
 		}
 	}
 	return results, nil
+}
+
+// GetBars fetches historical bars for a ticker.
+func (a *AlpacaProvider) GetBars(ticker string, limit int) ([]marketdata.Bar, error) {
+	// Request last 5 days to ensure we get at least one previous close (handling weekends/holidays)
+	start := time.Now().AddDate(0, 0, -5)
+
+	bars, err := a.mdClient.GetBars(ticker, marketdata.GetBarsRequest{
+		TimeFrame: marketdata.OneDay,
+		Start:     start,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if len(bars) > limit {
+		// Return the LAST 'limit' bars (most recent)
+		return bars[len(bars)-limit:], nil
+	}
+
+	return bars, nil
 }
