@@ -32,3 +32,13 @@ func (a *AlpacaProvider) ListOrders(status string) ([]alpaca.Order, error) {
 		Limit:  100, // Reasonable limit
 	})
 }
+
+// ListPositions fetches all open positions.
+func (a *AlpacaProvider) ListPositions() ([]alpaca.Position, error) {
+	return a.tradeClient.GetPositions()
+}
+
+// CancelOrder cancels a specific order by ID.
+func (a *AlpacaProvider) CancelOrder(orderID string) error {
+	return a.tradeClient.CancelOrder(orderID)
+}

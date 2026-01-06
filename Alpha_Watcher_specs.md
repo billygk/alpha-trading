@@ -231,3 +231,30 @@ If an open order exists, the bot must reject the new /buy request with: "⚠️ 
 Polling Update: During the 1-hour polling cycle, if portfolio_state.json is empty but Alpaca has open orders, the bot should send a Telegram notification: "⏳ Waiting for Market Open: {{qty}} shares of {{ticker}} are queued."
 Resilience: This prevents the bot from "double-dipping" your €300 capital if you accidentally trigger multiple proposals while the market is closed.
 
+## 27. Universal Exit & Liquidation Handler (/sell)
+
+Objective: A single command to terminate all risk (pending or active) for a specific ticker.
+Command: /sell <ticker>.
+Logic Flow:
+Step 1: Check Active Positions:
+Check portfolio_state.json and call alpaca.ListPositions().
+If an active position is found: Execute alpaca.PlaceOrder (Side: Sell, Type: Market).
+Send Telegram: "📉 Closing Position: Manual Sell for {{ticker}} initiated."
+Step 2: Check Pending Orders:
+Call alpaca.ListOrders(status="open") for the ticker.
+If pending orders exist: Execute alpaca.CancelOrder for each.
+Send Telegram: "🚫 Cancelling Orders: Pending orders for {{ticker}} removed."
+Step 3: Cleanup:
+Upon confirmation of fill/cancellation, update portfolio_state.json to reflect Status: CLOSED.
+Safety: If neither a position nor an order is found, return: "❓ No active risk found for {{ticker}}."
+
+## 28. Deep Sync & Recovery (/refresh)
+
+Objective: Force-reconcile local state with Alpaca reality.
+Command: /refresh.
+Logic:
+Fetch ALL current positions from Alpaca.
+Overwrite/Update portfolio_state.json to match.
+Initialize HighWaterMark to current market price for any newly "discovered" positions.
+Send Telegram: "🔄 State Reconciled: Local state now matches Alpaca broker data."
+

@@ -183,6 +183,11 @@ Result:
 - Implemented Polling-Based Attended Automation (Spec 20).
 - Refactored `Watcher.Poll()` to include SL/TP trigger checks and interactive confirmation workflow.
 - Application now operates cleanly with only REST API calls.
+
+## [2026-01-06] Universal Exit & Deep Sync
+- Started implementation of Spec Points 27 (/sell) and 28 (/refresh).
+- Objective: Add manual liquidation command and state reconciliation.
+
 Next Steps: Deploy and Validate.
 ---
 

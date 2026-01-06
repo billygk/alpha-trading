@@ -19,6 +19,8 @@ type MarketProvider interface {
 	PlaceOrder(ticker string, qty float64, side string) (*alpaca.Order, error)
 	GetOrder(orderID string) (*alpaca.Order, error)
 	ListOrders(status string) ([]alpaca.Order, error)
+	ListPositions() ([]alpaca.Position, error)
+	CancelOrder(orderID string) error
 	GetBuyingPower() (float64, error)
 }
 

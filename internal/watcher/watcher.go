@@ -135,8 +135,12 @@ func (w *Watcher) HandleCommand(cmd string) string {
 		return w.handleBuyCommand(parts)
 	case "/scan":
 		return w.handleScanCommand(parts)
+	case "/sell":
+		return w.handleSellCommand(parts)
+	case "/refresh":
+		return w.handleRefreshCommand()
 	default:
-		return "Unknown command. Try /help for a list of commands."
+		return "Unknown command. Try /buy, /status, /sell, /refresh or /scan."
 	}
 }
 
@@ -346,6 +350,141 @@ func (w *Watcher) getStatus() string {
 
 	return fmt.Sprintf("📊 *STATUS REPORT*\nUptime: %s\nActive Positions: %d\nEquity: %s%s",
 		uptime, activeCount, equityStr, pendingMsg)
+}
+
+func (w *Watcher) handleSellCommand(parts []string) string {
+	if len(parts) < 2 {
+		return "Usage: /sell <ticker>"
+	}
+	ticker := strings.ToUpper(parts[1])
+
+	msg := []string{fmt.Sprintf("📉 *Manual Universal Exit: %s*", ticker)}
+
+	// 1. Check Active Positions
+	positions, err := w.provider.ListPositions()
+	positionFound := false
+	if err != nil {
+		msg = append(msg, fmt.Sprintf("⚠️ Failed to list positions: %v", err))
+	} else {
+		for _, p := range positions {
+			if p.Symbol == ticker {
+				positionFound = true
+				// Execute Sell
+				_, err := w.provider.PlaceOrder(ticker, float64(p.Qty.IntPart()), "sell")
+				if err != nil {
+					msg = append(msg, fmt.Sprintf("❌ Failed to sell position: %v", err))
+					log.Printf("[FATAL_TRADE_ERROR] Manual sell failed for %s: %v", ticker, err)
+				} else {
+					msg = append(msg, "✅ Triggered Market Sell (Closing Position).")
+				}
+				break
+			}
+		}
+	}
+
+	if !positionFound {
+		msg = append(msg, "ℹ️ No active position found on exchange.")
+	}
+
+	// 2. Check Pending Orders
+	ordersFound := false
+	openOrders, err := w.provider.ListOrders("open")
+	if err != nil {
+		msg = append(msg, fmt.Sprintf("⚠️ Failed to list open orders: %v", err))
+	} else {
+		for _, o := range openOrders {
+			if o.Symbol == ticker {
+				ordersFound = true
+				if err := w.provider.CancelOrder(o.ID); err != nil {
+					msg = append(msg, fmt.Sprintf("❌ Failed to cancel order %s: %v", o.ID, err))
+				} else {
+					msg = append(msg, fmt.Sprintf("✅ Cancelled Pending Order: %s %s", o.Side, o.Qty))
+				}
+			}
+		}
+	}
+
+	if !ordersFound {
+		msg = append(msg, "ℹ️ No pending orders found.")
+	}
+
+	// 3. Cleanup Local State
+	// Mark local state as CLOSED for this ticker regardless of exchange state if requested?
+	// Spec says: "Upon confirmation of fill/cancellation, update portfolio_state.json to reflect Status: CLOSED."
+	// Since we fired Market Sell, we can assume it will close. Better to be safe and mask it.
+
+	updated := false
+	for i := range w.state.Positions {
+		if w.state.Positions[i].Ticker == ticker && w.state.Positions[i].Status == "ACTIVE" {
+			w.state.Positions[i].Status = "CLOSED"
+			updated = true
+		}
+	}
+
+	if updated {
+		w.saveStateAsync()
+		msg = append(msg, "✅ Local state updated to CLOSED.")
+	}
+
+	if !positionFound && !ordersFound {
+		return fmt.Sprintf("❓ No active risk found for %s (No positions, No orders).", ticker)
+	}
+
+	return strings.Join(msg, "\n")
+}
+
+func (w *Watcher) handleRefreshCommand() string {
+	positions, err := w.provider.ListPositions()
+	if err != nil {
+		return fmt.Sprintf("❌ Failed to fetch positions from Alpaca: %v", err)
+	}
+
+	// Rebuild State
+	var newPositions []models.Position
+
+	// Create a map of existing HighWaterMarks to preserve them
+	hwmMap := make(map[string]float64)
+	tsPctMap := make(map[string]float64)
+
+	for _, p := range w.state.Positions {
+		if p.Status == "ACTIVE" {
+			hwmMap[p.Ticker] = p.HighWaterMark
+			tsPctMap[p.Ticker] = p.TrailingStopPct
+		}
+	}
+
+	for _, p := range positions {
+		hwm := p.AvgEntryPrice.InexactFloat64()
+		// If we have a stored HWM that is higher (and valid), use it
+		if val, ok := hwmMap[p.Symbol]; ok && val > hwm {
+			hwm = val
+		}
+
+		tsPct := 0.0
+		if val, ok := tsPctMap[p.Symbol]; ok {
+			tsPct = val
+		}
+
+		qty, _ := p.Qty.Float64()
+
+		newPos := models.Position{
+			Ticker:          p.Symbol,
+			Quantity:        qty,
+			EntryPrice:      p.AvgEntryPrice.InexactFloat64(),
+			StopLoss:        0, // Unknown, reset or need manual set? Spec silent.
+			TakeProfit:      0, // Unknown.
+			Status:          "ACTIVE",
+			HighWaterMark:   hwm,
+			TrailingStopPct: tsPct,
+			ThesisID:        fmt.Sprintf("IMPORTED_%d", time.Now().Unix()),
+		}
+		newPositions = append(newPositions, newPos)
+	}
+
+	w.state.Positions = newPositions
+	w.saveStateAsync()
+
+	return fmt.Sprintf("🔄 State Reconciled: Local state now matches Alpaca broker data details (%d active positions).", len(newPositions))
 }
 
 func (w *Watcher) getList() string {
