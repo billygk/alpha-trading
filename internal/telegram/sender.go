@@ -43,6 +43,11 @@ func SendInteractiveMessage(text string, buttons []Button) {
 		"reply_markup": string(keyboardJSON),
 	}
 
+	// Debug Logging
+	if os.Getenv("WATCHER_LOG_LEVEL") == "DEBUG" {
+		log.Printf("[DEBUG] Telegram Interactive: %s | Buttons: %+v", text, buttons)
+	}
+
 	jsonData, _ := json.Marshal(data)
 	resp, err := http.Post(apiURL, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {

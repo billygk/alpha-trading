@@ -318,5 +318,34 @@ Next Steps: Monitor deployments.
 - Next Steps: Deploy and Validate.
 ---
 
+
+---
+## [2026-01-06] Implemented Telegram Debug Logging
+- Action: Added debug logs to `client.go` and `sender.go`.
+- Result: 
+  - When `WATCHER_LOG_LEVEL=DEBUG`, outgoing Telegram messages (text and buttons) are printed to the logs.
+- Next Steps: Validate in production debugging.
+---
+
+
+---
+## [2026-01-06] Refined Spec 42 (Backfill)
+- Action: Updated `/refresh` logic to backfill defaults for *existing* positions if their SL/TP is 0 (N/A).
+- Reason: User requested SL calculation for existing "N/A" items.
+- Result: 
+  - Positions with SL=0 will now get `DefaultStopLossPct`.
+  - Positions with TP=0 will now get `DefaultTakeProfitPct`.
+- Next Steps: Deploy.
+---
+
+
+---
+## [2026-01-06] Improved Dashboard Clarity
+- Action: Updated `/status` output to show both SL Price and Distance %.
+- New Format: `↳ SL: $46.50 (6.3%) | HWM: $49.42`
+- Result: Reduces ambiguity about what "SL" represents.
+- Next Steps: Deploy.
+---
+
 <!-- END_OF_LOG -->
 

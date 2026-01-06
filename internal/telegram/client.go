@@ -27,6 +27,11 @@ func Notify(text string) {
 		"parse_mode": "Markdown",
 	}
 
+	// Debug Logging
+	if os.Getenv("WATCHER_LOG_LEVEL") == "DEBUG" {
+		log.Printf("[DEBUG] Telegram Notify: %s", text)
+	}
+
 	body, _ := json.Marshal(payload)
 
 	_, err := http.Post(url, "application/json", bytes.NewBuffer(body))

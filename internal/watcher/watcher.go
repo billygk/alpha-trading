@@ -492,12 +492,14 @@ func (w *Watcher) getStatus() string {
 
 			// Context line
 			distSL := "N/A"
+			slPriceStr := "N/A"
 			if !d.Current.IsZero() && !d.SL.IsZero() {
 				// (Current - SL) / Current * 100
 				pct := d.Current.Sub(d.SL).Div(d.Current).Mul(decimal.NewFromInt(100))
 				distSL = fmt.Sprintf("%s%%", pct.StringFixed(1))
+				slPriceStr = "$" + d.SL.StringFixed(2)
 			}
-			sb.WriteString(fmt.Sprintf("      ↳ SL: %s | HWM: $%s\n", distSL, d.HWM.StringFixed(2)))
+			sb.WriteString(fmt.Sprintf("      ↳ SL: %s (%s) | HWM: $%s\n", slPriceStr, distSL, d.HWM.StringFixed(2)))
 		}
 		sb.WriteString("\n")
 	}
@@ -718,6 +720,22 @@ func (w *Watcher) handleRefreshCommand() string {
 					thesisID = oldP.ThesisID
 					break
 				}
+			}
+
+			// Backfill Defaults if Zero (Safety Override)
+			// User requested that SL be calculated even for existing positions if currently N/A.
+			if sl.IsZero() {
+				slMult := decimal.NewFromInt(1).Sub(decimal.NewFromFloat(w.config.DefaultStopLossPct).Div(decimal.NewFromInt(100)))
+				sl = avgEntry.Mul(slMult)
+				log.Printf("ℹ️ Existing position %s had SL=0. Backfilled default: $%s", ticker, sl.StringFixed(2))
+			}
+			if tp.IsZero() {
+				tpMult := decimal.NewFromInt(1).Add(decimal.NewFromFloat(w.config.DefaultTakeProfitPct).Div(decimal.NewFromInt(100)))
+				tp = avgEntry.Mul(tpMult)
+				log.Printf("ℹ️ Existing position %s had TP=0. Backfilled default: $%s", ticker, tp.StringFixed(2))
+			}
+			if tsPct.IsZero() {
+				tsPct = decimal.NewFromFloat(w.config.DefaultTrailingStopPct)
 			}
 		} else {
 			// Spec 42: Apply Defaults to Discovered Positions
