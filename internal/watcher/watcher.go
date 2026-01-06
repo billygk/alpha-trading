@@ -443,36 +443,53 @@ func (w *Watcher) handleRefreshCommand() string {
 	var newPositions []models.Position
 
 	// Create a map of existing HighWaterMarks to preserve them
+	// We also track existence to identify "Discovered" positions
 	hwmMap := make(map[string]float64)
 	tsPctMap := make(map[string]float64)
+	existsMap := make(map[string]bool)
 
 	for _, p := range w.state.Positions {
 		if p.Status == "ACTIVE" {
 			hwmMap[p.Ticker] = p.HighWaterMark
 			tsPctMap[p.Ticker] = p.TrailingStopPct
+			existsMap[p.Ticker] = true
 		}
 	}
 
 	for _, p := range positions {
-		hwm := p.AvgEntryPrice.InexactFloat64()
-		// If we have a stored HWM that is higher (and valid), use it
-		if val, ok := hwmMap[p.Symbol]; ok && val > hwm {
-			hwm = val
-		}
-
-		tsPct := 0.0
-		if val, ok := tsPctMap[p.Symbol]; ok {
-			tsPct = val
-		}
-
+		ticker := p.Symbol
 		qty, _ := p.Qty.Float64()
+		currentPrice := p.CurrentPrice.InexactFloat64()
+
+		var entryPrice float64
+		var hwm float64
+		var tsPct float64
+
+		if existsMap[ticker] {
+			entryPrice = p.AvgEntryPrice.InexactFloat64()
+			// Preserve HWM
+			hwm = entryPrice
+			if val, ok := hwmMap[ticker]; ok {
+				hwm = val
+			}
+			// Preserve TS
+			if val, ok := tsPctMap[ticker]; ok {
+				tsPct = val
+			}
+		} else {
+			// Discovered Position
+			log.Printf("[WARNING] Position discovered via sync: %s. Initializing state.", ticker)
+			entryPrice = currentPrice
+			hwm = currentPrice
+			tsPct = 0.0
+		}
 
 		newPos := models.Position{
-			Ticker:          p.Symbol,
+			Ticker:          ticker,
 			Quantity:        qty,
-			EntryPrice:      p.AvgEntryPrice.InexactFloat64(),
-			StopLoss:        0, // Unknown, reset or need manual set? Spec silent.
-			TakeProfit:      0, // Unknown.
+			EntryPrice:      entryPrice,
+			StopLoss:        0,
+			TakeProfit:      0,
 			Status:          "ACTIVE",
 			HighWaterMark:   hwm,
 			TrailingStopPct: tsPct,

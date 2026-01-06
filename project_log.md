@@ -188,6 +188,11 @@ Result:
 - Started implementation of Spec Points 27 (/sell) and 28 (/refresh).
 - Objective: Add manual liquidation command and state reconciliation.
 
+## [2026-01-06] Manual Sync & State Reconciliation
+- Started implementation of Spec Point 29 (Manual Sync Logic).
+- Objective: Enhance /refresh to handle discovered positions with specific initialization and warnings.
+
+
 Next Steps: Deploy and Validate.
 ---
 

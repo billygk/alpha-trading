@@ -258,3 +258,32 @@ Overwrite/Update portfolio_state.json to match.
 Initialize HighWaterMark to current market price for any newly "discovered" positions.
 Send Telegram: "🔄 State Reconciled: Local state now matches Alpaca broker data."
 
+## 29. Manual Sync & State Reconciliation Logic
+
+Objective: Implement the backend logic for the /refresh command to handle state discovery.
+Constraint: When a position is found on Alpaca that does not exist in portfolio_state.json, it must be added with a Status: "OPEN" and the current market price assigned to both EntryPrice and HighWaterMark.
+Safety: Log a warning for every position that is "Discovered" via sync but was missing from local state, as this indicates a potential local I/O failure.
+
+## 30. Rich Dashboard Implementation (/status)
+Objective: Transform the /status command from a simple counter into a detailed financial dashboard.
+Market State Integration:
+The bot must call alpaca.GetClock().
+Header must display: Market: 🟢 OPEN or Market: 🔴 CLOSED.
+Calculate time remaining: "Closes in: HH:MM" or "Opens in: HH:MM".
+Data Requirements:
+For each active position in portfolio_state.json, the bot must:
+Fetch GetLatestTrade (Current Price).
+Fetch GetBars (daily, limit=1) to get the PreviousClose price.
+Calculate Today P/L: (Current - PrevClose) * Qty.
+Calculate Total P/L: (Current - EntryPrice) * Qty.
+UI Requirements (Telegram):
+Use Monospaced formatting for the asset data to ensure alignment.
+Visual Indicators: Use "🟢" for positive Total P/L and "🔴" for negative Total P/L.
+Strategic Context: Include the "Distance to Stop Loss" (%) and the current "HighWaterMark" for each position.
+Performance: Fetch market data (Clock, Account, Prices) in parallel using goroutines to minimize command latency.
+Fallbacks: If Alpaca fails to return PreviousClose, skip the "Today P/L" section.
+
+## 31. Unified Global State Version (v1.3)
+Requirement: Update state version to 1.3 to ensure the Agent recognizes these UI enhancements.
+Logic: No new fields required in the JSON for this, but the version bump ensures the Agent recompiles the notification templates and formatting logic.
+

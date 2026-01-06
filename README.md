@@ -67,7 +67,8 @@ Then run it:
 
 
 Important: 
-- project_log.md should always be updated with the progress of the project.
+- project_log.md should always be updated with the progress of the project, this is a append only log
 - Include details comments in code
+
 
 
