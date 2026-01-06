@@ -35,6 +35,8 @@ The application can be configured via the `.env` file. If these variables are mi
 | `CONFIRMATION_MAX_DEVIATION_PCT` | `0.005` | Max price deviation (0.5%) allowed between trigger and confirmation. |
 | `AUTO_STATUS_ENABLED` | `false` | If `true`, automatically pushes `/status` dashboard during market hours. |
 | `DEFAULT_TAKE_PROFIT_PCT` | `15.0` | Default Take Profit % if omitted in /buy command. |
+| `DEFAULT_STOP_LOSS_PCT` | `5.0` | Default Stop Loss % if omitted. |
+| `DEFAULT_TRAILING_STOP_PCT` | `3.0` | Default Trailing Stop % if omitted. |
 
 
 ## Running
@@ -72,6 +74,7 @@ Then run it:
 Important: 
 - project_log.md should always be updated with the progress of the project, this is a append only log
 - Include details comments in code
+- update README.md with any changes needed
 
 
 

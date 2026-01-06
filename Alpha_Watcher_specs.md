@@ -376,3 +376,52 @@ IF Elapsed <= CONFIRMATION_TTL_SEC: Proceed to Deviation Gate and then execution
 UI Feedback:
 Include footer: ⏱️ Valid for {{TTL}} seconds.
 
+## 40. True Cost-Basis Reconciliation (/refresh Overhaul)
+Objective: Ensure that a /refresh command results in 100% parity with the Alpaca Broker's calculation of P/L and Equity.
+Logic Override (Point 28 & 29):
+When running /refresh, the bot MUST NOT use the CurrentPrice as the EntryPrice.
+Instead, for every position found in alpaca.ListPositions(), the bot MUST extract the AvgEntryPrice and CostBasis from the API response.
+Local State Update:
+Position.EntryPrice = alpacaPosition.AvgEntryPrice
+Position.HighWaterMark = max(alpacaPosition.AvgEntryPrice, CurrentMarketPrice)
+Position.Qty = alpacaPosition.Qty
+Decimal Precision Enforcement:
+Ensure the AvgEntryPrice (which can be 4 decimal places, e.g., $48.7367) is parsed directly into the shopspring/decimal type to prevent rounding discrepancies between the Bot and the Alpaca Dashboard.
+Dashboard Parity:
+Update the /status logic to calculate Total P/L using the formula: (CurrentPrice - AvgEntryPriceFromAlpaca) * Qty.
+This ensures that if you lose your JSON and refresh, your "Total P/L" in Telegram matches the "Total P/L" in the Alpaca UI exactly.
+Safety Gate:
+If a /refresh discovers a position with no SL/TP defined in the old JSON, it must set SL: N/A and TP: N/A and notify the user to set them manually using a new /update <ticker> <sl> <tp> command.
+
+## 41. Consolidated Transactional Interface (/buy)
+Objective: Implement a streamlined entry command that leverages global defaults for rapid execution.
+Command Syntax: /buy <ticker> <qty> [sl_price] [tp_price].
+Logic:
+The bot MUST parse optional sl_price and tp_price.
+If either is 0 or omitted:
+Fetch DEFAULT_STOP_LOSS_PCT and DEFAULT_TAKE_PROFIT_PCT from .env.
+Calculate absolute prices using shopspring/decimal based on the current market price.
+Verification: The bot must respond with a "Proposed Trade" card showing the final calculated SL/TP prices before the user clicks [✅ EXECUTE].
+Safety: Ensure DEFAULT_TRAILING_STOP_PCT is also applied as a default if no specific trailing logic is requested.
+
+## 42. Strict Mirror Sync (/refresh)
+Objective: Align local state with broker reality while preventing "State Destruction."
+Logic:
+Step 1: Fetch ListPositions() from Alpaca API.
+Step 2: For each position returned by Alpaca:
+Update Qty and EntryPrice (AvgEntry) in the local portfolio_state.json.
+Conditional SL/TP Assignment:
+IF the ticker is already in the JSON: Do not modify existing SL/TP/Trail values.
+IF the ticker is MISSING from the JSON (New Discovery): Apply the DEFAULT_STOP_LOSS_PCT and DEFAULT_TAKE_PROFIT_PCT from .env.
+Step 3: Remove any tickers from portfolio_state.json that are no longer present in alpaca.ListPositions() (Cleanup).
+Result: A clean, synchronized dashboard that respects previous human intent while protecting new discoveries.
+
+## 43. Automated Operational Awareness (The Market-Hours Heartbeat)
+Objective: Provide automated transparency without manual querying.
+Integration: Connect to the 1-hour polling loop (Point 20).
+Trigger:
+After every price-watching poll:
+Call alpaca.GetClock().
+IF is_open == true: Automatically send the Point 33 Dashboard to Telegram.
+Configuration: Use AUTO_STATUS_ENABLED=true in .env to toggle this behavior.
+

@@ -296,5 +296,27 @@ Next Steps: Monitor deployments.
 - Next Steps: Deploy.
 ---
 
+
+---
+## [2026-01-06] Implemented Spec 40
+- Action: Implemented True Cost-Basis Reconciliation.
+- Result: 
+  - Overhauled `/refresh` to use `AvgEntryPrice` from Alpaca instead of `CurrentPrice`.
+  - Implemented `/update <ticker> <sl> <tp>` command.
+  - New positions discovered via sync are initialized with N/A (0) for SL/TP and user is notified to update them.
+- Next Steps: Deploy.
+---
+
+
+---
+## [2026-01-06] Implemented Specs 41, 42, 43
+- Action: Implemented Consolidated Buy, Strict Sync, and Auto Heartbeats.
+- Result: 
+  - **Spec 41**: `/buy` now uses global `DEFAULT_STOP_LOSS_PCT` (5.0%) and `DEFAULT_TRAILING_STOP_PCT` (3.0%) if optional args omitted.
+  - **Spec 42**: `/refresh` enforces Strict Mirror Sync. Deleted positions are removed locally. New positions get default SL/TP.
+  - **Spec 43**: Added automated dashboard push during market hours if `AUTO_STATUS_ENABLED=true`.
+- Next Steps: Deploy and Validate.
+---
+
 <!-- END_OF_LOG -->
 

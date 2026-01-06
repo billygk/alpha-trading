@@ -83,8 +83,9 @@ func New(cfg *config.Config, provider market.MarketProvider) *Watcher {
 			{"/search", "Search for assets by name/ticker", "/search Apple"},
 			{"/ping", "Check bot latency", "/ping"},
 			{"/help", "Show this help message", "/help"},
-			{"/buy", "Propose a new trade", "/buy AAPL 1 200 [220]"},
+			{"/buy", "Propose a new trade", "/buy AAPL 1 [sl] [tp]"},
 			{"/scan", "Check sector health", "/scan energy"},
+			{"/update", "Update SL/TP for position", "/update AAPL 200 250"},
 		},
 	}
 
@@ -141,6 +142,8 @@ func (w *Watcher) HandleCommand(cmd string) string {
 		return w.handleScanCommand(parts)
 	case "/sell":
 		return w.handleSellCommand(parts)
+	case "/update":
+		return w.handleUpdateCommand(parts)
 	case "/refresh":
 		return w.handleRefreshCommand()
 	default:
@@ -175,10 +178,10 @@ func (w *Watcher) handleScanCommand(parts []string) string {
 }
 
 func (w *Watcher) handleBuyCommand(parts []string) string {
-	// 1. Parsing & Default Logic (Spec 37)
-	// /buy AAPL 1 200 [TP] [TS]
-	if len(parts) < 4 {
-		return "Usage: /buy <ticker> <qty> <sl> [tp] [ts_pct]"
+	// 1. Parsing & Default Logic (Spec 41)
+	// /buy AAPL 1 [sl] [tp]
+	if len(parts) < 3 {
+		return "Usage: /buy <ticker> <qty> [sl] [tp]"
 	}
 
 	ticker := strings.ToUpper(parts[1])
@@ -196,38 +199,49 @@ func (w *Watcher) handleBuyCommand(parts []string) string {
 	}
 
 	qty, err1 := decimal.NewFromString(parts[2])
-	sl, err2 := decimal.NewFromString(parts[3])
+	if err1 != nil {
+		return "⚠️ Invalid quantity format."
+	}
+
+	// Optional SL
+	var sl decimal.Decimal
+	var err2 error
+	if len(parts) >= 4 && parts[3] != "0" {
+		sl, err2 = decimal.NewFromString(parts[3])
+	}
 
 	// Optional TP
 	var tp decimal.Decimal
 	var err3 error
 	if len(parts) >= 5 && parts[4] != "0" {
 		tp, err3 = decimal.NewFromString(parts[4])
-	} // Else zero, handled below
-
-	// Optional TS
-	var tsPct decimal.Decimal
-	var err4 error
-	if len(parts) >= 6 {
-		tsPct, err4 = decimal.NewFromString(parts[5])
 	}
 
-	if err1 != nil || err2 != nil || err3 != nil || err4 != nil {
-		return "⚠️ Invalid number format. Use dots for decimals."
+	if err2 != nil || err3 != nil {
+		return "⚠️ Invalid price format."
 	}
 
-	// 2. Price Check Gate (needed for Default TP calc)
+	// 2. Price Check Gate (needed for Default Calc)
 	price, err := w.provider.GetPrice(ticker)
 	if err != nil {
 		return fmt.Sprintf("⚠️ Could not fetch price for %s.", ticker)
 	}
 
-	// Calculate Default TP if missing (Spec 37)
+	// Default Logic (Spec 41)
+	if sl.IsZero() {
+		// Entry * (1 - DefaultSL/100)
+		multiplier := decimal.NewFromInt(1).Sub(decimal.NewFromFloat(w.config.DefaultStopLossPct).Div(decimal.NewFromInt(100)))
+		sl = price.Mul(multiplier)
+	}
+
 	if tp.IsZero() {
-		// Entry * (1 + Default/100)
+		// Entry * (1 + DefaultTP/100)
 		multiplier := decimal.NewFromInt(1).Add(decimal.NewFromFloat(w.config.DefaultTakeProfitPct).Div(decimal.NewFromInt(100)))
 		tp = price.Mul(multiplier)
 	}
+
+	// Default Trailing Stop (Spec 41 Safety)
+	tsPct := decimal.NewFromFloat(w.config.DefaultTrailingStopPct)
 
 	totalCost := price.Mul(qty)
 	buyingPower, err := w.provider.GetBuyingPower()
@@ -602,6 +616,50 @@ func (w *Watcher) handleSellCommand(parts []string) string {
 	return strings.Join(msg, "\n")
 }
 
+func (w *Watcher) handleUpdateCommand(parts []string) string {
+	// /update AAPL 200 250 [5.0]
+	if len(parts) < 4 {
+		return "Usage: /update <ticker> <sl> <tp> [ts_pct]"
+	}
+
+	ticker := strings.ToUpper(parts[1])
+	sl, err1 := decimal.NewFromString(parts[2])
+	tp, err2 := decimal.NewFromString(parts[3])
+
+	var tsPct decimal.Decimal
+	var err3 error
+	if len(parts) >= 5 {
+		tsPct, err3 = decimal.NewFromString(parts[4])
+	}
+
+	if err1 != nil || err2 != nil || err3 != nil {
+		return "⚠️ Invalid number format."
+	}
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	found := false
+	for i, p := range w.state.Positions {
+		if p.Ticker == ticker && p.Status == "ACTIVE" {
+			w.state.Positions[i].StopLoss = sl
+			w.state.Positions[i].TakeProfit = tp
+			if len(parts) >= 5 {
+				w.state.Positions[i].TrailingStopPct = tsPct
+			}
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return fmt.Sprintf("⚠️ No active position found for %s.", ticker)
+	}
+
+	w.saveStateAsync()
+	return fmt.Sprintf("✅ Updated %s:\nSL: $%s | TP: $%s | TS: %s%%", ticker, sl.StringFixed(2), tp.StringFixed(2), tsPct.StringFixed(2))
+}
+
 func (w *Watcher) handleRefreshCommand() string {
 	positions, err := w.provider.ListPositions()
 	if err != nil {
@@ -625,48 +683,66 @@ func (w *Watcher) handleRefreshCommand() string {
 		}
 	}
 
+	var discoveredTickers []string
+
 	for _, p := range positions {
 		ticker := p.Symbol
 		qty := p.Qty
+		avgEntry := p.AvgEntryPrice // Ensure this is accurate (Alpaca v3 uses Decimal)
 
 		var currentPrice decimal.Decimal
 		if p.CurrentPrice != nil {
 			currentPrice = *p.CurrentPrice
 		}
 
-		var entryPrice decimal.Decimal
-		var hwm decimal.Decimal
-		var tsPct decimal.Decimal
+		// Spec 40: HWM = max(AvgEntry, Current)
+		hwm := avgEntry
+		if currentPrice.GreaterThan(hwm) {
+			hwm = currentPrice
+		}
 
+		// Defaults for New/Discovered (Spec 42 Strict Sync)
+		sl := decimal.Zero
+		tp := decimal.Zero
+		tsPct := decimal.NewFromFloat(w.config.DefaultTrailingStopPct) // Always apply default TS
+		thesisID := fmt.Sprintf("IMPORTED_%d", time.Now().Unix())
+
+		// If exists in local state, preserve SL/TP/TS
 		if existsMap[ticker] {
-			entryPrice = p.AvgEntryPrice
-			// Preserve HWM
-			hwm = entryPrice
-			if val, ok := hwmMap[ticker]; ok {
-				hwm = val
-			}
-			// Preserve TS
-			if val, ok := tsPctMap[ticker]; ok {
-				tsPct = val
+			// Find original to retrieve config
+			for _, oldP := range w.state.Positions {
+				if oldP.Ticker == ticker && oldP.Status == "ACTIVE" {
+					sl = oldP.StopLoss
+					tp = oldP.TakeProfit
+					tsPct = oldP.TrailingStopPct
+					thesisID = oldP.ThesisID
+					break
+				}
 			}
 		} else {
-			// Discovered Position
-			log.Printf("[WARNING] Position discovered via sync: %s. Initializing state.", ticker)
-			entryPrice = currentPrice
-			hwm = currentPrice
-			tsPct = decimal.Zero
+			// Spec 42: Apply Defaults to Discovered Positions
+			// SL = Entry * (1 - DefaultSL/100)
+			slMult := decimal.NewFromInt(1).Sub(decimal.NewFromFloat(w.config.DefaultStopLossPct).Div(decimal.NewFromInt(100)))
+			sl = avgEntry.Mul(slMult)
+
+			// TP = Entry * (1 + DefaultTP/100)
+			tpMult := decimal.NewFromInt(1).Add(decimal.NewFromFloat(w.config.DefaultTakeProfitPct).Div(decimal.NewFromInt(100)))
+			tp = avgEntry.Mul(tpMult)
+
+			discoveredTickers = append(discoveredTickers, ticker)
+			log.Printf("ℹ️ Position discovered: %s. Applied Default SL ($%s) & TP ($%s).", ticker, sl.StringFixed(2), tp.StringFixed(2))
 		}
 
 		newPos := models.Position{
 			Ticker:          ticker,
 			Quantity:        qty,
-			EntryPrice:      entryPrice,
-			StopLoss:        decimal.Zero,
-			TakeProfit:      decimal.Zero,
+			EntryPrice:      avgEntry, // Spec 40: Always use Alpaca AvgEntry
+			StopLoss:        sl,
+			TakeProfit:      tp,
 			Status:          "ACTIVE",
 			HighWaterMark:   hwm,
 			TrailingStopPct: tsPct,
-			ThesisID:        fmt.Sprintf("IMPORTED_%d", time.Now().Unix()),
+			ThesisID:        thesisID,
 		}
 		newPositions = append(newPositions, newPos)
 	}
@@ -674,7 +750,13 @@ func (w *Watcher) handleRefreshCommand() string {
 	w.state.Positions = newPositions
 	w.saveStateAsync()
 
-	return fmt.Sprintf("🔄 State Reconciled: Local state now matches Alpaca broker data details (%d active positions).", len(newPositions))
+	msg := fmt.Sprintf("🔄 Strict Mirror Sync Complete: Local state aligned with Alpaca (%d active positions).", len(newPositions))
+	if len(discoveredTickers) > 0 {
+		msg += fmt.Sprintf("\n⚠️ Imported & Protected: %s", strings.Join(discoveredTickers, ", "))
+	}
+	// Note: We don't explicitly list deleted positions, but len(newPositions) vs old count implies it.
+
+	return msg
 }
 
 func (w *Watcher) getList() string {
@@ -791,11 +873,11 @@ func (w *Watcher) Poll() {
 		// For now, we just mark it. We can't call GetClock inside here effectively if we want to minimize lock time,
 		// but risk checks do network calls anyway.
 
+		// Spec 43: Auto-Status during market hours
+		// If AUTO_STATUS_ENABLED is true, we verify market status here (inside lock mainly for variable access, but network call is better outside).
+		// We use the 'sendDashboard' flag.
 		if w.config.AutoStatusEnabled {
-			// We will check market status implicitly by calling getMarketStatus or just getStatus later.
-			// But we only want to send if Open?
-			// The Spec says: "If market is OPEN...".
-			// We can defer the check to the sending block outside the lock.
+			// Logic handled below outside lock
 			sendDashboard = true
 		} else {
 			// Standard 24h Heartbeat for fallback
@@ -816,24 +898,17 @@ func (w *Watcher) Poll() {
 
 	// 2. Dashboard Delivery (Outside Lock)
 	if sendDashboard {
-		// Verify Market Status if strictly required by Spec 34, or just send it?
-		// "If market is OPEN".
+		// Spec 43: Check Market Status
 		clock, err := w.provider.GetClock()
 		isMarketOpen := err == nil && clock.IsOpen
-
-		// Force send if it's the 24h fallback, OR if Market Open + Enabled.
-		// If AutoStatus is enabled, we send ONLY if open? Or always?
-		// Spec 32/34 nuances: "During market hours".
-		// So if Closed, skip?
-		// But if 24h passed, we want a heartbeat regardless of market status.
 
 		shouldSend := false
 		if w.config.AutoStatusEnabled {
 			if isMarketOpen {
-				shouldSend = true
+				shouldSend = true // Only send if Market is OPEN
 			}
 		} else {
-			shouldSend = true // 24h fallback logic triggered
+			shouldSend = true // Fallback 24h heartbeat
 		}
 
 		if shouldSend {

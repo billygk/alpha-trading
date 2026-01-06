@@ -23,6 +23,8 @@ type Config struct {
 	ConfirmationTTLSec          int     // Environment: CONFIRMATION_TTL_SEC
 	ConfirmationMaxDeviationPct float64 // Environment: CONFIRMATION_MAX_DEVIATION_PCT
 	DefaultTakeProfitPct        float64 // Environment: DEFAULT_TAKE_PROFIT_PCT
+	DefaultStopLossPct          float64 // Environment: DEFAULT_STOP_LOSS_PCT
+	DefaultTrailingStopPct      float64 // Environment: DEFAULT_TRAILING_STOP_PCT
 	AutoStatusEnabled           bool    // Environment: AUTO_STATUS_ENABLED
 }
 
@@ -82,6 +84,8 @@ func Load() *Config {
 		ConfirmationTTLSec:          getEnvAsInt("CONFIRMATION_TTL_SEC", 300),                 // Default 5 mins
 		ConfirmationMaxDeviationPct: getEnvAsFloat64("CONFIRMATION_MAX_DEVIATION_PCT", 0.005), // Default 0.5%
 		DefaultTakeProfitPct:        getEnvAsFloat64("DEFAULT_TAKE_PROFIT_PCT", 15.0),         // Default 15.0%
+		DefaultStopLossPct:          getEnvAsFloat64("DEFAULT_STOP_LOSS_PCT", 5.0),            // Default 5.0%
+		DefaultTrailingStopPct:      getEnvAsFloat64("DEFAULT_TRAILING_STOP_PCT", 3.0),        // Default 3.0%
 		AutoStatusEnabled:           getEnvAsBool("AUTO_STATUS_ENABLED", false),               // Default false
 	}
 
