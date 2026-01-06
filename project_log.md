@@ -24,11 +24,6 @@ Action: Code Genesis
 Result: alpha_watcher.go v1.8.0 created with Alpaca & Telegram logic.
 Next Steps: Initialize Go module and test locally.
 ---
-Date: 2026-01-03
-Action: Workflow Pivot
-Result: Transitioned to AI Coding Agent workflow with Specs and Log files.
-Next Steps: Execute first local run with Agent assistance.
----
 
 ---
 Date: 2026-01-03
@@ -345,6 +340,14 @@ Next Steps: Monitor deployments.
 - New Format: `↳ SL: $46.50 (6.3%) | HWM: $49.42`
 - Result: Reduces ambiguity about what "SL" represents.
 - Next Steps: Deploy.
+---
+
+
+---
+## [2026-01-06] Documentation Overhaul
+- Action: Rewrote `README.md`.
+- Result: Created a comprehensive guide for public release, covering Installation, Configuration, and detailed Command usage.
+- Next Steps: Release.
 ---
 
 <!-- END_OF_LOG -->
