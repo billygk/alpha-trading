@@ -42,13 +42,14 @@ type PendingAction struct {
 }
 
 type PendingProposal struct {
-	Ticker     string
-	Qty        float64
-	Price      float64
-	TotalCost  float64
-	StopLoss   float64
-	TakeProfit float64
-	Timestamp  time.Time
+	Ticker          string
+	Qty             float64
+	Price           float64
+	TotalCost       float64
+	StopLoss        float64
+	TakeProfit      float64
+	TrailingStopPct float64
+	Timestamp       time.Time
 }
 
 type CommandDoc struct {
@@ -166,21 +167,39 @@ func (w *Watcher) handleScanCommand(parts []string) string {
 }
 
 func (w *Watcher) handleBuyCommand(parts []string) string {
-	// /buy AAPL 1 210.50 255.00
-	if len(parts) != 5 {
-		return "Usage: /buy <ticker> <qty> <sl> <tp>"
+	// /buy AAPL 1 210.50 255.00 [5.0]
+	if len(parts) < 5 || len(parts) > 6 {
+		return "Usage: /buy <ticker> <qty> <sl> <tp> [ts_pct]"
 	}
 
+	// 1. Validation Gate (Duplicate Order Check)
 	ticker := strings.ToUpper(parts[1])
+	openOrders, err := w.provider.ListOrders("open")
+	if err == nil {
+		for _, o := range openOrders {
+			if o.Symbol == ticker {
+				return fmt.Sprintf("⚠️ Order already pending for %s. Cancel it on Alpaca before placing a new one.", ticker)
+			}
+		}
+	} else {
+		log.Printf("Warning: Failed to list open orders: %v", err)
+	}
+
 	qty, err1 := strconv.ParseFloat(parts[2], 64)
 	sl, err2 := strconv.ParseFloat(parts[3], 64)
 	tp, err3 := strconv.ParseFloat(parts[4], 64)
 
-	if err1 != nil || err2 != nil || err3 != nil {
+	var tsPct float64
+	var err4 error
+	if len(parts) == 6 {
+		tsPct, err4 = strconv.ParseFloat(parts[5], 64)
+	}
+
+	if err1 != nil || err2 != nil || err3 != nil || err4 != nil {
 		return "⚠️ Invalid number format. Use dots for decimals."
 	}
 
-	// 1. Validation Gate
+	// 2. Price Check Gate
 	price, err := w.provider.GetPrice(ticker)
 	if err != nil {
 		return fmt.Sprintf("⚠️ Could not fetch price for %s.", ticker)
@@ -200,13 +219,14 @@ func (w *Watcher) handleBuyCommand(parts []string) string {
 	// Store Proposal
 	w.mu.Lock()
 	w.pendingProposals[ticker] = PendingProposal{
-		Ticker:     ticker,
-		Qty:        qty,
-		Price:      price,
-		TotalCost:  totalCost,
-		StopLoss:   sl,
-		TakeProfit: tp,
-		Timestamp:  time.Now(),
+		Ticker:          ticker,
+		Qty:             qty,
+		Price:           price,
+		TotalCost:       totalCost,
+		StopLoss:        sl,
+		TakeProfit:      tp,
+		TrailingStopPct: tsPct,
+		Timestamp:       time.Now(),
 	}
 	w.mu.Unlock()
 
@@ -217,8 +237,9 @@ func (w *Watcher) handleBuyCommand(parts []string) string {
 		"Price: $%.2f\n"+
 		"Total: $%.2f\n"+
 		"SL: $%.2f | TP: $%.2f\n"+
+		"TS: %.2f%%\n"+
 		"Confirm Execution?",
-		ticker, qty, price, totalCost, sl, tp)
+		ticker, qty, price, totalCost, sl, tp, tsPct)
 
 	buttons := []telegram.Button{
 		{Text: "✅ EXECUTE", CallbackData: fmt.Sprintf("EXECUTE_BUY_%s", ticker)},
@@ -313,8 +334,18 @@ func (w *Watcher) getStatus() string {
 
 	uptime := time.Since(startTime).Round(time.Second)
 
-	return fmt.Sprintf("📊 *STATUS REPORT*\nUptime: %s\nActive Positions: %d\nEquity: %s",
-		uptime, activeCount, equityStr)
+	// Fetch Pending Orders
+	pendingMsg := ""
+	openOrders, err := w.provider.ListOrders("open")
+	if err == nil && len(openOrders) > 0 {
+		pendingMsg = "\n\n⏳ *PENDING ORDERS*:\n"
+		for _, o := range openOrders {
+			pendingMsg += fmt.Sprintf("• %s %s shares of %s (%s)\n", o.Side, o.Qty, o.Symbol, o.Status)
+		}
+	}
+
+	return fmt.Sprintf("📊 *STATUS REPORT*\nUptime: %s\nActive Positions: %d\nEquity: %s%s",
+		uptime, activeCount, equityStr, pendingMsg)
 }
 
 func (w *Watcher) getList() string {
@@ -451,7 +482,29 @@ func (w *Watcher) Poll() {
 			uptimeDuration.String(), activeCount, equityStr)
 
 		telegram.Notify(hbMsg)
+		telegram.Notify(hbMsg)
 		w.state.LastHeartbeat = time.Now().In(config.CetLoc).Format(time.RFC3339)
+	}
+
+	// --- QUEUED ORDER CHECK (Empty Portfolio) ---
+	if len(w.state.Positions) == 0 {
+		openOrders, err := w.provider.ListOrders("open")
+		if err == nil && len(openOrders) > 0 {
+			// Alert logic: We should avoid spamming every minute.
+			// Ideally we use a persistent "LastQueuedAlert" akin to LastHeartbeat.
+			// But for now, specs say: "During the 1-hour polling cycle".
+			// Since PollInterval is 60m, we can just send it.
+			// However, if we fail fallback to 1min? No, config says 60.
+
+			// Let's filter for accepted/new/calculated? "open" covers all working statuses.
+
+			var sb strings.Builder
+			sb.WriteString("⏳ *WAITING FOR MARKET OPEN*\n")
+			for _, o := range openOrders {
+				sb.WriteString(fmt.Sprintf("• %s %s shares of %s are queued.\n", o.Side, o.Qty, o.Symbol))
+			}
+			telegram.Notify(sb.String())
+		}
 	}
 
 	// --- POSITION CHECK LOGIC ---

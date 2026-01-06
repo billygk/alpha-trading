@@ -16,7 +16,9 @@ type MarketProvider interface {
 	GetEquity() (float64, error)
 	GetClock() (*alpaca.Clock, error)
 	SearchAssets(query string) ([]alpaca.Asset, error)
-	PlaceOrder(ticker string, qty float64, side string) error
+	PlaceOrder(ticker string, qty float64, side string) (*alpaca.Order, error)
+	GetOrder(orderID string) (*alpaca.Order, error)
+	ListOrders(status string) ([]alpaca.Order, error)
 	GetBuyingPower() (float64, error)
 }
 

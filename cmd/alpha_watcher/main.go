@@ -57,7 +57,7 @@ func main() {
 		cancel() // Cancel context to stop main loop
 	}()
 
-	log.Println("Alpha Watcher v2.0.0-Streaming Initialized")
+	log.Println("Alpha Watcher v2.1.0-Polling Initialized")
 	log.Printf("Polling Interval: %d mins (Fallback)", cfg.PollIntervalMins)
 
 	// 5. Main Loop

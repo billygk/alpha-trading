@@ -64,10 +64,8 @@ func (w *Watcher) HandleCallback(callbackID, data string) string {
 		}
 
 		// 3. Execution
-		err = w.provider.PlaceOrder(ticker, 0, "sell") // Qty 0 is not supported? We need position size.
-		// Wait, specs say "Market Order". Position handling usually requires knowing quantity.
-		// Specs don't explicitly say "Close Position", but "PlaceOrder".
-		// We need to look up quantity from state.
+		// 3. Execution (Sell)
+		// Qty 0 is not safe, we need strict position sizing from state.
 
 		qty := 0.0
 		posIndex := -1
@@ -80,22 +78,53 @@ func (w *Watcher) HandleCallback(callbackID, data string) string {
 		}
 
 		if qty == 0 {
-			return fmt.Sprintf("⚠️ Error: Could not find active position quantity for %s.", ticker)
+			msg := fmt.Sprintf("❌ Execution Failed: Could not find active position quantity for %s.", ticker)
+			log.Printf("[FATAL_TRADE_ERROR] %s", msg)
+			return msg
 		}
 
-		err = w.provider.PlaceOrder(ticker, qty, "sell")
+		order, err := w.provider.PlaceOrder(ticker, qty, "sell")
 		if err != nil {
-			log.Printf("Execution Error: %v", err)
-			return fmt.Sprintf("❌ Execution Failed for %s: %v", ticker, err)
+			msg := fmt.Sprintf("❌ Execution Failed for %s: %v", ticker, err)
+			log.Printf("[FATAL_TRADE_ERROR] %s", msg)
+			return msg
 		}
 
-		// 4. Update State
+		// 4. Verification Check
+		time.Sleep(2 * time.Second)
+		verifiedOrder, err := w.provider.GetOrder(order.ID)
+		if err != nil {
+			msg := fmt.Sprintf("⚠️ Order Placed but Verification Failed: %v. Please check Alpaca dashboard.", err)
+			log.Printf("[FATAL_TRADE_ERROR] Verification failed for order %s: %v", order.ID, err)
+			// We optimize for safety: do not mark EXECUTED if we can't verify?
+			// OR mark executed but warn. Let's Warn.
+			return msg
+		}
+
+		status := strings.ToLower(verifiedOrder.Status)
+		// Valid statuses for a "working" or "filled" order
+		validStatuses := []string{"filled", "new", "accepted", "partially_filled", "calculated", "pending_new"}
+		isValid := false
+		for _, s := range validStatuses {
+			if status == s {
+				isValid = true
+				break
+			}
+		}
+
+		if !isValid {
+			msg := fmt.Sprintf("❌ Execution Failed: Order Status is '%s' (Reason: %s). position remains ACTIVE.", status, verifiedOrder.FailedAt)
+			log.Printf("[FATAL_TRADE_ERROR] Order %s failed with status %s", order.ID, status)
+			return msg
+		}
+
+		// 5. Update State
 		if posIndex != -1 {
 			w.state.Positions[posIndex].Status = "EXECUTED"
 			w.saveStateAsync()
 		}
 
-		return fmt.Sprintf("✅ ORDER PLACED: Sold %s at Market.", ticker)
+		return fmt.Sprintf("✅ ORDER PLACED: Sold %s at Market (Status: %s).", ticker, status)
 	}
 
 	return "Unknown action."
@@ -124,17 +153,40 @@ func (w *Watcher) handleBuyCallback(data string) string {
 	}
 
 	if action == "EXECUTE" {
-		// 1. Re-Verify Price (Slippage check? Optional but good)
-		// For now, trust the user click, but maybe check price hasn't jumped 50%?
-		// Let's keep it simple: Market Order.
-
-		err := w.provider.PlaceOrder(ticker, proposal.Qty, "buy")
+		// 1. Execute Buy
+		order, err := w.provider.PlaceOrder(ticker, proposal.Qty, "buy")
 		if err != nil {
-			log.Printf("Buy Execution Error: %v", err)
-			return fmt.Sprintf("❌ Buy Execution Failed: %v", err)
+			msg := fmt.Sprintf("❌ Buy Execution Failed: %v", err)
+			log.Printf("[FATAL_TRADE_ERROR] %s", msg)
+			return msg
 		}
 
-		// 2. Add to State
+		// 2. Verification
+		time.Sleep(2 * time.Second)
+		verifiedOrder, err := w.provider.GetOrder(order.ID)
+		if err != nil {
+			msg := fmt.Sprintf("⚠️ Buy Placed but Verification Failed: %v. Check Dashboard.", err)
+			log.Printf("[FATAL_TRADE_ERROR] Buy verification failed for %s: %v", order.ID, err)
+			return msg
+		}
+
+		status := strings.ToLower(verifiedOrder.Status)
+		validStatuses := []string{"filled", "new", "accepted", "partially_filled", "calculated", "pending_new"}
+		isValid := false
+		for _, s := range validStatuses {
+			if status == s {
+				isValid = true
+				break
+			}
+		}
+
+		if !isValid {
+			msg := fmt.Sprintf("❌ Buy Failed: Order Status '%s'.", status)
+			log.Printf("[FATAL_TRADE_ERROR] Buy Order %s failed: status %s", order.ID, status)
+			return msg
+		}
+
+		// 3. Add to State
 		newPos := models.Position{
 			Ticker:          ticker,
 			Quantity:        proposal.Qty,
@@ -143,15 +195,15 @@ func (w *Watcher) handleBuyCallback(data string) string {
 			TakeProfit:      proposal.TakeProfit,
 			Status:          "ACTIVE",
 			HighWaterMark:   proposal.Price,
-			TrailingStopPct: 0, // Could be added to /buy command later
+			TrailingStopPct: proposal.TrailingStopPct,
 			ThesisID:        fmt.Sprintf("MANUAL_%d", time.Now().Unix()),
 		}
 
 		w.state.Positions = append(w.state.Positions, newPos)
 		w.saveStateAsync()
 
-		return fmt.Sprintf("✅ PURCHASED: %.2f %s @ Market.\nSL: $%.2f | TP: $%.2f\nTracking Active.",
-			proposal.Qty, ticker, proposal.StopLoss, proposal.TakeProfit)
+		return fmt.Sprintf("✅ PURCHASED: %.2f %s @ Market.\nStatus: %s\nSL: $%.2f | TP: $%.2f\nTracking Active.",
+			proposal.Qty, ticker, status, proposal.StopLoss, proposal.TakeProfit)
 	}
 
 	return "Unknown buy action."

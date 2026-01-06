@@ -37,3 +37,4 @@ go.work.sum
 .vscode/
 
 *.log
+init-scripts/github_token

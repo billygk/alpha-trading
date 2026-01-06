@@ -212,3 +212,22 @@ You are an expert Golang Developer and System Architect. You are building a high
     - Update the version in memory and trigger an immediate saveState().
 4. Verification: Ensure the migration is atomic and logged as an INFO event.
 
+## 25. Enhanced Execution Feedback & Error Reporting 
+
+Objective: Prevent "Silent Failures" during the Attended Automation workflow.
+Technical Implementation:
+Refactor the Execute logic in the Telegram handler.
+MANDATORY: On ANY failure of alpaca.PlaceOrder or the Deviation Gate, the bot MUST send a specific Telegram alert detailing the error (e.g., "❌ Execution Failed: Insufficient Funds" or "❌ Execution Failed: API Network Timeout").
+Order Verification: After a successful PlaceOrder call, the bot must wait 2 seconds and then call alpaca.GetOrder to verify the order status is filled or accepted before updating portfolio_state.json.
+Logging: All failed execution attempts must be logged with [FATAL_TRADE_ERROR] prefix for easy grepping in watcher.log.
+
+## 26. Order State Synchronization (The "Queued" Watcher)
+
+Objective: Prevent duplicate orders and track trades that are "Accepted" but not yet "Filled" (e.g., market closed).
+Technical Implementation:
+Update the /status command to include a "Pending Orders" section.
+Before executing a /buy command, the bot MUST check for existing open orders for that ticker via alpaca.ListOrders(status="open").
+If an open order exists, the bot must reject the new /buy request with: "⚠️ Order already pending for {{ticker}}. Cancel it on Alpaca before placing a new one."
+Polling Update: During the 1-hour polling cycle, if portfolio_state.json is empty but Alpaca has open orders, the bot should send a Telegram notification: "⏳ Waiting for Market Open: {{qty}} shares of {{ticker}} are queued."
+Resilience: This prevents the bot from "double-dipping" your €300 capital if you accidentally trigger multiple proposals while the market is closed.
+

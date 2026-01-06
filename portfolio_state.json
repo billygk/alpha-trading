@@ -1,6 +1,18 @@
 {
-  "version": "1.1",
-  "last_sync": "2026-01-04T20:07:08+01:00",
-  "last_heartbeat": "2026-01-03T22:06:04+01:00",
-  "positions": []
+  "version": "1.2",
+  "last_sync": "2026-01-06T13:10:20+01:00",
+  "last_heartbeat": "2026-01-06T13:10:20+01:00",
+  "positions": [
+    {
+      "ticker": "URA",
+      "quantity": 3,
+      "entry_price": 48.62,
+      "stop_loss": 45.5,
+      "take_profit": 58,
+      "status": "ACTIVE",
+      "thesis_id": "MANUAL_1767701500",
+      "high_water_mark": 48.62,
+      "trailing_stop_pct": 4
+    }
+  ]
 }
