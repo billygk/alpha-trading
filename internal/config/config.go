@@ -22,6 +22,7 @@ type Config struct {
 	PollIntervalMins            int     // Environment: WATCHER_POLL_INTERVAL
 	ConfirmationTTLSec          int     // Environment: CONFIRMATION_TTL_SEC
 	ConfirmationMaxDeviationPct float64 // Environment: CONFIRMATION_MAX_DEVIATION_PCT
+	AutoStatusEnabled           bool    // Environment: AUTO_STATUS_ENABLED
 }
 
 // Load initializes the configuration.
@@ -79,6 +80,7 @@ func Load() *Config {
 		PollIntervalMins:            getEnvAsInt("WATCHER_POLL_INTERVAL", 60),
 		ConfirmationTTLSec:          getEnvAsInt("CONFIRMATION_TTL_SEC", 300),                 // Default 5 mins
 		ConfirmationMaxDeviationPct: getEnvAsFloat64("CONFIRMATION_MAX_DEVIATION_PCT", 0.005), // Default 0.5%
+		AutoStatusEnabled:           getEnvAsBool("AUTO_STATUS_ENABLED", false),               // Default false
 	}
 
 	log.Printf("Configuration Loaded: LogLevel=%s, MaxSize=%dMB, Backups=%d, PollInterval=%dm",
@@ -137,4 +139,17 @@ func splitEnv(s string) []string {
 		}
 	}
 	return []string{s, ""}
+}
+
+func getEnvAsBool(key string, fallback bool) bool {
+	valStr := os.Getenv(key)
+	if valStr == "" {
+		return fallback
+	}
+	val, err := strconv.ParseBool(valStr)
+	if err != nil {
+		log.Printf("Warning: Invalid bool for config %s, using default %v", key, fallback)
+		return fallback
+	}
+	return val
 }

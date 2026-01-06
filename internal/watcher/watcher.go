@@ -883,6 +883,17 @@ func (w *Watcher) Poll() {
 		}
 	}
 
+	// Spec 32: Automated Operational Awareness
+	if w.config.AutoStatusEnabled {
+		clock, err := w.provider.GetClock()
+		if err == nil && clock.IsOpen {
+			statusMsg := w.getStatus()
+			telegram.Notify(statusMsg)
+		} else if err != nil {
+			log.Printf("[ERROR] Auto-Status failed to get clock: %v", err)
+		}
+	}
+
 	w.state.LastSync = time.Now().In(config.CetLoc).Format(time.RFC3339)
 	storage.SaveState(w.state)
 }

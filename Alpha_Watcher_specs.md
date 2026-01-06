@@ -287,3 +287,14 @@ Fallbacks: If Alpaca fails to return PreviousClose, skip the "Today P/L" section
 Requirement: Update state version to 1.3 to ensure the Agent recognizes these UI enhancements.
 Logic: No new fields required in the JSON for this, but the version bump ensures the Agent recompiles the notification templates and formatting logic.
 
+## 32. Automated Operational Awareness (Scheduled Status) // NEW POINT
+Objective: Implement automated status pushes during active market hours to maintain user synchronization.
+Logic:
+Integrate with the main Polling Loop (Point 20).
+At the end of every successful poll, the bot must call alpaca.GetClock().
+Trigger: If clock.IsOpen == true, the bot must automatically invoke the logic defined in Point 30 (Rich Dashboard) and send it to the user.
+Environment Control:
+Add a new .env variable: AUTO_STATUS_ENABLED=true.
+The bot must check this flag before performing the automated push.
+Resilience: If the dashboard generation fails during an automated push, the bot must log an [ERROR] but MUST NOT interrupt the primary price-watching loop or trigger a crash.
+

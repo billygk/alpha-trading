@@ -18,6 +18,7 @@ A Go-based trading bot that watches positions and manages stops/monitoring.
    WATCHER_MAX_LOG_SIZE_MB=5
    WATCHER_MAX_LOG_BACKUPS=3
    WATCHER_POLL_INTERVAL=60
+   AUTO_STATUS_ENABLED=false
    ```
 
 ## Configuration Reference
@@ -32,6 +33,7 @@ The application can be configured via the `.env` file. If these variables are mi
 | `WATCHER_POLL_INTERVAL` | `60` | Time in minutes between market checks. |
 | `CONFIRMATION_TTL_SEC` | `300` | Seconds before a pending confirmation expires (5 mins). |
 | `CONFIRMATION_MAX_DEVIATION_PCT` | `0.005` | Max price deviation (0.5%) allowed between trigger and confirmation. |
+| `AUTO_STATUS_ENABLED` | `false` | If `true`, automatically pushes `/status` dashboard during market hours. |
 
 
 ## Running
