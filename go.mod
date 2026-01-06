@@ -5,7 +5,7 @@ go 1.22
 require (
 	github.com/alpacahq/alpaca-trade-api-go/v3 v3.9.0
 	github.com/joho/godotenv v1.5.1
-	github.com/shopspring/decimal v1.3.1
+	github.com/shopspring/decimal v1.4.0
 )
 
 require (

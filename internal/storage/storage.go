@@ -67,10 +67,10 @@ func migrateState(s *models.PortfolioState) bool {
 		log.Println("INFO: Migrating State Schema from 1.1 to 1.2")
 		for i := range s.Positions {
 			// Initialize HighWaterMark to EntryPrice if missing
-			if s.Positions[i].HighWaterMark == 0 {
+			if s.Positions[i].HighWaterMark.IsZero() {
 				s.Positions[i].HighWaterMark = s.Positions[i].EntryPrice
 			}
-			// TrailingStopPct defaults to 0 (float zero value), which is correct.
+			// TrailingStopPct defaults to 0 (decimal zero value), which is correct.
 		}
 		s.Version = "1.2"
 		updated = true

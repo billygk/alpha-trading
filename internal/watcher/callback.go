@@ -6,6 +6,8 @@ import (
 	"log"
 	"strings"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 // HandleCallback processes button clicks from Telegram.
@@ -53,21 +55,23 @@ func (w *Watcher) HandleCallback(callbackID, data string) string {
 			return fmt.Sprintf("⚠️ Error fetching current price for %s. Aborted safety check.", ticker)
 		}
 
-		deviation := (currentPrice - pending.TriggerPrice) / pending.TriggerPrice
-		if deviation < 0 {
-			deviation = -deviation // Abs
+		deviation := currentPrice.Sub(pending.TriggerPrice).Div(pending.TriggerPrice)
+		if deviation.IsNegative() {
+			deviation = deviation.Neg() // Abs
 		}
 
-		maxDev := w.config.ConfirmationMaxDeviationPct
-		if deviation > maxDev {
-			return fmt.Sprintf("⚠️ PRICE DEVIATION: Price changed by %.2f%% (Max %.2f%%). Action aborted for safety.", deviation*100, maxDev*100)
+		maxDev := decimal.NewFromFloat(w.config.ConfirmationMaxDeviationPct)
+		if deviation.GreaterThan(maxDev) {
+			displayDev := deviation.Mul(decimal.NewFromInt(100)).StringFixed(2)
+			displayMax := maxDev.Mul(decimal.NewFromInt(100)).StringFixed(2)
+			return fmt.Sprintf("⚠️ PRICE DEVIATION: Price changed by %s%% (Max %s%%). Action aborted for safety.", displayDev, displayMax)
 		}
 
 		// 3. Execution
 		// 3. Execution (Sell)
 		// Qty 0 is not safe, we need strict position sizing from state.
 
-		qty := 0.0
+		qty := decimal.Zero
 		posIndex := -1
 		for i, p := range w.state.Positions {
 			if p.Ticker == ticker && p.Status == "ACTIVE" {
@@ -77,7 +81,7 @@ func (w *Watcher) HandleCallback(callbackID, data string) string {
 			}
 		}
 
-		if qty == 0 {
+		if qty.IsZero() {
 			msg := fmt.Sprintf("❌ Execution Failed: Could not find active position quantity for %s.", ticker)
 			log.Printf("[FATAL_TRADE_ERROR] %s", msg)
 			return msg
@@ -202,8 +206,8 @@ func (w *Watcher) handleBuyCallback(data string) string {
 		w.state.Positions = append(w.state.Positions, newPos)
 		w.saveStateAsync()
 
-		return fmt.Sprintf("✅ PURCHASED: %.2f %s @ Market.\nStatus: %s\nSL: $%.2f | TP: $%.2f\nTracking Active.",
-			proposal.Qty, ticker, status, proposal.StopLoss, proposal.TakeProfit)
+		return fmt.Sprintf("✅ PURCHASED: %s %s @ Market.\nStatus: %s\nSL: $%s | TP: $%s\nTracking Active.",
+			proposal.Qty.StringFixed(2), ticker, status, proposal.StopLoss.StringFixed(2), proposal.TakeProfit.StringFixed(2))
 	}
 
 	return "Unknown buy action."

@@ -6,6 +6,7 @@ import (
 
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
 	"github.com/alpacahq/alpaca-trade-api-go/v3/marketdata"
+	"github.com/shopspring/decimal"
 )
 
 // MarketProvider is an Interface.
@@ -13,16 +14,16 @@ import (
 // satisfies the interface. This allows us to swap out Alpaca for Kraken,
 // or a Mock for testing, without changing the code that *uses* the provider.
 type MarketProvider interface {
-	GetPrice(ticker string) (float64, error)
-	GetEquity() (float64, error)
+	GetPrice(ticker string) (decimal.Decimal, error)
+	GetEquity() (decimal.Decimal, error)
 	GetClock() (*alpaca.Clock, error)
 	SearchAssets(query string) ([]alpaca.Asset, error)
-	PlaceOrder(ticker string, qty float64, side string) (*alpaca.Order, error)
+	PlaceOrder(ticker string, qty decimal.Decimal, side string) (*alpaca.Order, error)
 	GetOrder(orderID string) (*alpaca.Order, error)
 	ListOrders(status string) ([]alpaca.Order, error)
 	ListPositions() ([]alpaca.Position, error)
 	CancelOrder(orderID string) error
-	GetBuyingPower() (float64, error)
+	GetBuyingPower() (decimal.Decimal, error)
 	GetBars(ticker string, limit int) ([]marketdata.Bar, error)
 }
 
@@ -45,35 +46,35 @@ func NewAlpacaProvider() *AlpacaProvider {
 
 // GetPrice fetches the latest trade price for a ticker.
 // Note the receiver (a *AlpacaProvider) - this makes it a method of the struct.
-func (a *AlpacaProvider) GetPrice(ticker string) (float64, error) {
+func (a *AlpacaProvider) GetPrice(ticker string) (decimal.Decimal, error) {
 	// We ask for the latest trade.
 	trade, err := a.mdClient.GetLatestTrade(ticker, marketdata.GetLatestTradeRequest{})
 	if err != nil {
-		return 0, err // Return 0 and the error if something fails
+		return decimal.Zero, err // Return 0 and the error if something fails
 	}
 	if trade == nil {
-		return 0, nil // Or a specific error like "no trade found"
+		return decimal.Zero, nil // Or a specific error like "no trade found"
 	}
-	return trade.Price, nil // Return the price and nil error if successful
+	return decimal.NewFromFloat(trade.Price), nil // Return the price and nil error if successful
 }
 
 // GetEquity fetches the current total account equity.
-func (a *AlpacaProvider) GetEquity() (float64, error) {
+func (a *AlpacaProvider) GetEquity() (decimal.Decimal, error) {
 	acct, err := a.tradeClient.GetAccount()
 	if err != nil {
-		return 0, err
+		return decimal.Zero, err
 	}
 	// InexactFloat64 converts the decimal type to a standard float64.
-	return acct.Equity.InexactFloat64(), nil
+	return acct.Equity, nil
 }
 
 // GetBuyingPower fetches the current buying power.
-func (a *AlpacaProvider) GetBuyingPower() (float64, error) {
+func (a *AlpacaProvider) GetBuyingPower() (decimal.Decimal, error) {
 	acct, err := a.tradeClient.GetAccount()
 	if err != nil {
-		return 0, err
+		return decimal.Zero, err
 	}
-	return acct.BuyingPower.InexactFloat64(), nil
+	return acct.BuyingPower, nil
 }
 
 // GetClock fetches the market clock (open/close status).

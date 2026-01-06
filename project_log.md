@@ -270,5 +270,10 @@ Next Steps: Monitor deployments.
 
 ---
 
+
+## [2026-01-06] Decimal Transition & Broker-First Dashboard
+- Started implementation of Specs 33 (Broker-First Dashboard), 34 (Scheduled Heartbeat), 35 (Decimal Transition).
+- Objective: Switch to shopspring/decimal for precision and make /status rely on Alpaca as source of truth.
+
 <!-- END_OF_LOG -->
 

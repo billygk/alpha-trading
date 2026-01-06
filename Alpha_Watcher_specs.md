@@ -298,3 +298,34 @@ Add a new .env variable: AUTO_STATUS_ENABLED=true.
 The bot must check this flag before performing the automated push.
 Resilience: If the dashboard generation fails during an automated push, the bot must log an [ERROR] but MUST NOT interrupt the primary price-watching loop or trigger a crash.
 
+## 33. Broker-First Dashboard Logic (Overrides Point 30)
+Objective: Shift the source of truth for the /status command from the local JSON file to the live Alpaca API.
+Data Acquisition Strategy:
+The bot MUST execute three parallel calls (using sync.WaitGroup or errgroup):
+alpaca.GetAccount(): For total equity, buying power, and account-level P/L.
+alpaca.GetClock(): For market status (Open/Closed) and session countdown.
+alpaca.ListPositions(): To identify what is currently held in the portfolio.
+Reconciliation Logic:
+Iterate through results from ListPositions().
+Match each Alpaca position against the portfolio_state.json based on the Ticker.
+Case A (Matched): Use Alpaca's Qty and CurrentPrice, but retrieve EntryPrice and TrailingStopPct from JSON to calculate SL/TP metrics.
+Case B (Unmatched): Display as "⚠️ UNTRACKED". Calculate P/L relative to the CostBasis provided by Alpaca's API since local history is missing.
+Enhanced UI Elements:
+Header: Equity: $X (Today: +$Y / Z%) where Y is calculated from Equity - LastEquity.
+Asset Cards: Include AvgEntry vs Current and a clear "Distance to Virtual Stop" line.
+
+## 34. Scheduled Market-Hours Heartbeat (Overrides Point 32)
+Objective: Automate the delivery of the Point 33 Dashboard during active trading windows.
+Operational Trigger:
+At the conclusion of every successful polling cycle (Point 20), the bot must check the result of alpaca.GetClock().
+If clock.IsOpen == true, the bot must immediately execute the Point 33 Dashboard logic and send it to the Telegram chat.
+Throttle Control:
+Add .env variable: AUTO_STATUS_INTERVAL_POLLS. (Default: 1).
+This allows the user to receive a dashboard every N polls.
+Execution Safety: If the automated status push fails, it MUST be logged as a [WARNING] but must not affect the LastSync timestamp or the state of the active positions.
+
+## 35. Precision Decimal Transition (Technical Requirement)
+Objective: Replace all float64 fields in portfolio_state.json and internal calculations with the shopspring/decimal package.
+Reasoning: To prevent IEEE 754 rounding errors in P/L and Trailing Stop calculations.
+Migration: The Migrate() function (Point 24) must handle the conversion from float strings to Decimal objects during the v1.3 upgrade.
+

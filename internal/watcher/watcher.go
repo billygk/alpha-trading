@@ -3,7 +3,6 @@ package watcher
 import (
 	"fmt"
 	"log"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"alpha_trading/internal/telegram"
 
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
+	"github.com/shopspring/decimal"
 )
 
 var startTime = time.Now()
@@ -39,18 +39,18 @@ type Watcher struct {
 type PendingAction struct {
 	Ticker       string
 	Action       string // "SELL" (for now)
-	TriggerPrice float64
+	TriggerPrice decimal.Decimal
 	Timestamp    time.Time
 }
 
 type PendingProposal struct {
 	Ticker          string
-	Qty             float64
-	Price           float64
-	TotalCost       float64
-	StopLoss        float64
-	TakeProfit      float64
-	TrailingStopPct float64
+	Qty             decimal.Decimal
+	Price           decimal.Decimal
+	TotalCost       decimal.Decimal
+	StopLoss        decimal.Decimal
+	TakeProfit      decimal.Decimal
+	TrailingStopPct decimal.Decimal
 	Timestamp       time.Time
 }
 
@@ -166,7 +166,7 @@ func (w *Watcher) handleScanCommand(parts []string) string {
 			sb.WriteString(fmt.Sprintf("• %s: ⚠️ Err\n", ticker))
 			continue
 		}
-		sb.WriteString(fmt.Sprintf("• %s: $%.2f\n", ticker, price))
+		sb.WriteString(fmt.Sprintf("• %s: $%s\n", ticker, price.StringFixed(2)))
 	}
 
 	return sb.String()
@@ -191,14 +191,14 @@ func (w *Watcher) handleBuyCommand(parts []string) string {
 		log.Printf("Warning: Failed to list open orders: %v", err)
 	}
 
-	qty, err1 := strconv.ParseFloat(parts[2], 64)
-	sl, err2 := strconv.ParseFloat(parts[3], 64)
-	tp, err3 := strconv.ParseFloat(parts[4], 64)
+	qty, err1 := decimal.NewFromString(parts[2])
+	sl, err2 := decimal.NewFromString(parts[3])
+	tp, err3 := decimal.NewFromString(parts[4])
 
-	var tsPct float64
+	var tsPct decimal.Decimal
 	var err4 error
 	if len(parts) == 6 {
-		tsPct, err4 = strconv.ParseFloat(parts[5], 64)
+		tsPct, err4 = decimal.NewFromString(parts[5])
 	}
 
 	if err1 != nil || err2 != nil || err3 != nil || err4 != nil {
@@ -211,15 +211,15 @@ func (w *Watcher) handleBuyCommand(parts []string) string {
 		return fmt.Sprintf("⚠️ Could not fetch price for %s.", ticker)
 	}
 
-	totalCost := price * qty
+	totalCost := price.Mul(qty)
 	buyingPower, err := w.provider.GetBuyingPower()
 	if err != nil {
 		log.Printf("Error fetching BP: %v", err)
 		return "⚠️ Error checking buying power."
 	}
 
-	if totalCost > buyingPower {
-		return fmt.Sprintf("❌ Insufficient Buying Power.\nRequired: $%.2f\nAvailable: $%.2f", totalCost, buyingPower)
+	if totalCost.GreaterThan(buyingPower) {
+		return fmt.Sprintf("❌ Insufficient Buying Power.\nRequired: $%s\nAvailable: $%s", totalCost.StringFixed(2), buyingPower.StringFixed(2))
 	}
 
 	// Store Proposal
@@ -239,13 +239,13 @@ func (w *Watcher) handleBuyCommand(parts []string) string {
 	// Response with Buttons
 	msg := fmt.Sprintf("📝 *TRADE PROPOSAL*\n"+
 		"Asset: %s\n"+
-		"Qty: %.2f\n"+
-		"Price: $%.2f\n"+
-		"Total: $%.2f\n"+
-		"SL: $%.2f | TP: $%.2f\n"+
-		"TS: %.2f%%\n"+
+		"Qty: %s\n"+
+		"Price: $%s\n"+
+		"Total: $%s\n"+
+		"SL: $%s | TP: $%s\n"+
+		"TS: %s%%\n"+
 		"Confirm Execution?",
-		ticker, qty, price, totalCost, sl, tp, tsPct)
+		ticker, qty.StringFixed(2), price.StringFixed(2), totalCost.StringFixed(2), sl.StringFixed(2), tp.StringFixed(2), tsPct.StringFixed(2))
 
 	buttons := []telegram.Button{
 		{Text: "✅ EXECUTE", CallbackData: fmt.Sprintf("EXECUTE_BUY_%s", ticker)},
@@ -287,12 +287,12 @@ func (w *Watcher) searchAssets(query string) string {
 func (w *Watcher) getPrice(ticker string) string {
 	price, err := w.provider.GetPrice(ticker)
 
-	if err != nil || price == 0 {
+	if err != nil || price.IsZero() {
 		log.Printf("Price lookup failed for %s (err: %v, price: %v). Falling back to search.", ticker, err, price)
 		searchResult := w.searchAssets(ticker)
 		return fmt.Sprintf("⚠️ Price not found for '%s'. Did you mean:\n\n%s", ticker, searchResult)
 	}
-	return fmt.Sprintf("💲 *%s*: $%.2f", ticker, price)
+	return fmt.Sprintf("💲 *%s*: $%s", ticker, price.StringFixed(2))
 }
 
 func (w *Watcher) getMarketStatus() string {
@@ -338,17 +338,17 @@ func (w *Watcher) getStatus() string {
 
 	type detailedPos struct {
 		Ticker    string
-		Qty       float64
-		Current   float64
-		PrevClose float64
-		Entry     float64
-		SL        float64
-		HWM       float64
+		Qty       decimal.Decimal
+		Current   decimal.Decimal
+		PrevClose decimal.Decimal
+		Entry     decimal.Decimal
+		SL        decimal.Decimal
+		HWM       decimal.Decimal
 	}
 	posDetails := make(map[string]detailedPos)
 
 	var clock *alpaca.Clock
-	var equity float64
+	var equity decimal.Decimal
 	var errClock, errEquity error
 
 	// 1. Fetch System Level Data
@@ -370,12 +370,10 @@ func (w *Watcher) getStatus() string {
 			current, _ := w.provider.GetPrice(pos.Ticker)
 			bars, _ := w.provider.GetBars(pos.Ticker, 1)
 
-			prevClose := 0.0
+			prevClose := decimal.Zero
 			if len(bars) > 0 {
-				prevClose = bars[len(bars)-1].Close
+				prevClose = decimal.NewFromFloat(bars[len(bars)-1].Close)
 			}
-
-			// If current price fetch failed, try to use bar close? No, keep 0 to show error.
 
 			mu.Lock()
 			posDetails[pos.Ticker] = detailedPos{
@@ -422,67 +420,56 @@ func (w *Watcher) getStatus() string {
 		sb.WriteString("`Ticker | Price | DayP/L | TotP/L`\n")
 		sb.WriteString("`--------------------------------`\n")
 
-		totalDayPL := 0.0
-		totalUnrealizedPL := 0.0
+		totalDayPL := decimal.Zero
+		totalUnrealizedPL := decimal.Zero
 
 		for _, p := range activePositions {
 			d := posDetails[p.Ticker]
-			if d.Current == 0 {
+			if d.Current.IsZero() {
 				sb.WriteString(fmt.Sprintf("`%-6s | ERR   |   -    |   -   `\n", d.Ticker))
 				continue
 			}
 
 			// Day P/L
-			dayPL := 0.0
+			dayPL := decimal.Zero
 			dayPLStr := "   -  "
-			if d.PrevClose > 0 {
-				dayPL = (d.Current - d.PrevClose) * d.Qty
-				totalDayPL += dayPL
+			if !d.PrevClose.IsZero() {
+				// (Current - PrevClose) * Qty
+				dayPL = d.Current.Sub(d.PrevClose).Mul(d.Qty)
+				totalDayPL = totalDayPL.Add(dayPL)
 				icon := "🟢"
-				if dayPL < 0 {
+				if dayPL.IsNegative() {
 					icon = "🔴"
 				}
-				dayPLStr = fmt.Sprintf("%s%.0f", icon, dayPL) // Compact logic? Spec doesn't specify precision for P/L but strictly space.
-				// "Use Monospaced formatting... 🟢/🔴"
-				// Let's use compact numbers to fit.
+				dayPLStr = fmt.Sprintf("%s%s", icon, dayPL.StringFixed(0))
 			}
 
 			// Total P/L
-			totPL := (d.Current - d.Entry) * d.Qty
-			totalUnrealizedPL += totPL
+			// (Current - Entry) * Qty
+			totPL := d.Current.Sub(d.Entry).Mul(d.Qty)
+			totalUnrealizedPL = totalUnrealizedPL.Add(totPL)
 			totIcon := "🟢"
-			if totPL < 0 {
+			if totPL.IsNegative() {
 				totIcon = "🔴"
 			}
 
-			// Format Row
-			// Ticker(6) | Price(7) | Day(6) | Tot(6)
-			// Truncate ticker to 5 chars max? Or just assume <6.
+			sb.WriteString(fmt.Sprintf("`%-6s | %-6s | %s | %s%s`\n",
+				d.Ticker, d.Current.StringFixed(2), dayPLStr, totIcon, totPL.StringFixed(0)))
 
-			// Using dynamic padding?
-			// Let's try:
-			// `AAPL   | 210.50 | 🟢120  | 🟢450 `
-			// Limit float precision
-
-			sb.WriteString(fmt.Sprintf("`%-6s | %-6.2f | %s | %s%.0f`\n",
-				d.Ticker, d.Current, dayPLStr, totIcon, totPL))
-
-			// Context line (Spec 282: Strategic Context: Dist to SL, HWM)
-			// Small text or separate line?
-			// "Include... Distance to Stop Loss (%) and ... HighWaterMark"
-			// To keep dashboard clean, maybe add one line below?
+			// Context line
 			distSL := "N/A"
-			if d.Current > 0 && d.SL > 0 {
-				pct := ((d.Current - d.SL) / d.Current) * 100
-				distSL = fmt.Sprintf("%.1f%%", pct)
+			if !d.Current.IsZero() && !d.SL.IsZero() {
+				// (Current - SL) / Current * 100
+				pct := d.Current.Sub(d.SL).Div(d.Current).Mul(decimal.NewFromInt(100))
+				distSL = fmt.Sprintf("%s%%", pct.StringFixed(1))
 			}
-			sb.WriteString(fmt.Sprintf("      ↳ SL: %s | HWM: $%.2f\n", distSL, d.HWM))
+			sb.WriteString(fmt.Sprintf("      ↳ SL: %s | HWM: $%s\n", distSL, d.HWM.StringFixed(2)))
 		}
 		sb.WriteString("\n")
 	}
 
 	// Footer
-	equityStr := fmt.Sprintf("$%.2f", equity)
+	equityStr := "$" + equity.StringFixed(2)
 	if errEquity != nil {
 		equityStr = "Err"
 	}
@@ -495,7 +482,17 @@ func (w *Watcher) getStatus() string {
 	if err == nil && len(openOrders) > 0 {
 		pendingMsg = "\n⏳ *PENDING ORDERS*:\n"
 		for _, o := range openOrders {
-			pendingMsg += fmt.Sprintf("• %s %s %s\n", o.Side, o.Qty, o.Symbol)
+			// Alpaca Order Qty is *decimal.Decimal usually?
+			// Let's assume it is String or we use Qty directly if it prints.
+			// Actually Alpaca Order struct `Qty` is *decimal.Decimal in v3?
+			// Checking orders.go... it returns *alpaca.Order.
+			// Spec says use decimal. We used `o.Qty` in handleBuyCommand validation? No, that was `w.provider.ListOrders`.
+			// `o.Qty` is *decimal.Decimal.
+			qtyStr := "0"
+			if o.Qty != nil {
+				qtyStr = o.Qty.String()
+			}
+			pendingMsg += fmt.Sprintf("• %s %s %s\n", o.Side, qtyStr, o.Symbol)
 		}
 	}
 
@@ -522,7 +519,7 @@ func (w *Watcher) handleSellCommand(parts []string) string {
 			if p.Symbol == ticker {
 				positionFound = true
 				// Execute Sell
-				_, err := w.provider.PlaceOrder(ticker, float64(p.Qty.IntPart()), "sell")
+				_, err := w.provider.PlaceOrder(ticker, p.Qty, "sell")
 				if err != nil {
 					msg = append(msg, fmt.Sprintf("❌ Failed to sell position: %v", err))
 					log.Printf("[FATAL_TRADE_ERROR] Manual sell failed for %s: %v", ticker, err)
@@ -596,8 +593,8 @@ func (w *Watcher) handleRefreshCommand() string {
 
 	// Create a map of existing HighWaterMarks to preserve them
 	// We also track existence to identify "Discovered" positions
-	hwmMap := make(map[string]float64)
-	tsPctMap := make(map[string]float64)
+	hwmMap := make(map[string]decimal.Decimal)
+	tsPctMap := make(map[string]decimal.Decimal)
 	existsMap := make(map[string]bool)
 
 	for _, p := range w.state.Positions {
@@ -610,15 +607,19 @@ func (w *Watcher) handleRefreshCommand() string {
 
 	for _, p := range positions {
 		ticker := p.Symbol
-		qty, _ := p.Qty.Float64()
-		currentPrice := p.CurrentPrice.InexactFloat64()
+		qty := p.Qty
 
-		var entryPrice float64
-		var hwm float64
-		var tsPct float64
+		var currentPrice decimal.Decimal
+		if p.CurrentPrice != nil {
+			currentPrice = *p.CurrentPrice
+		}
+
+		var entryPrice decimal.Decimal
+		var hwm decimal.Decimal
+		var tsPct decimal.Decimal
 
 		if existsMap[ticker] {
-			entryPrice = p.AvgEntryPrice.InexactFloat64()
+			entryPrice = p.AvgEntryPrice
 			// Preserve HWM
 			hwm = entryPrice
 			if val, ok := hwmMap[ticker]; ok {
@@ -633,15 +634,15 @@ func (w *Watcher) handleRefreshCommand() string {
 			log.Printf("[WARNING] Position discovered via sync: %s. Initializing state.", ticker)
 			entryPrice = currentPrice
 			hwm = currentPrice
-			tsPct = 0.0
+			tsPct = decimal.Zero
 		}
 
 		newPos := models.Position{
 			Ticker:          ticker,
 			Quantity:        qty,
 			EntryPrice:      entryPrice,
-			StopLoss:        0,
-			TakeProfit:      0,
+			StopLoss:        decimal.Zero,
+			TakeProfit:      decimal.Zero,
 			Status:          "ACTIVE",
 			HighWaterMark:   hwm,
 			TrailingStopPct: tsPct,
@@ -730,8 +731,11 @@ func (w *Watcher) getListSafe() string {
 		if err != nil {
 			priceStr = "Err"
 		} else {
-			dist := ((price - pos.StopLoss) / price) * 100
-			distSL = fmt.Sprintf("%.2f%%", dist)
+			dist := decimal.Zero
+			if !price.IsZero() {
+				dist = price.Sub(pos.StopLoss).Div(price).Mul(decimal.NewFromInt(100))
+			}
+			distSL = fmt.Sprintf("%s%%", dist.StringFixed(2))
 		}
 
 		sb.WriteString(fmt.Sprintf("\n🔹 *%s*\nPrice: %s\nDist to SL: %s\n",
@@ -746,70 +750,104 @@ func (w *Watcher) getListSafe() string {
 }
 
 func (w *Watcher) Poll() {
-	// Sync.Mutex Lock for the critical section where we read/write state
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	var sendDashboard bool
 
-	// RELOAD? No, we are the source of truth now.
-	// But if we wanted to support manual edits to json file...
-	// Let's Assume memory is authority.
+	// 1. Critical Section: State Management & Risk Checks
+	func() {
+		w.mu.Lock()
+		defer w.mu.Unlock()
 
-	// --- HEARTBEAT LOGIC ---
-	sendHB := false
-	if w.state.LastHeartbeat == "" {
-		sendHB = true
-	} else {
-		lastHBTime, parseErr := time.Parse(time.RFC3339, w.state.LastHeartbeat)
-		if parseErr != nil || time.Since(lastHBTime) >= 24*time.Hour {
-			sendHB = true
-		}
-	}
+		// --- AUTO-STATUS / HEARTBEAT ---
+		// Spec 34: If market is OPEN and PollInterval elapsed (implied by Poll call), send dashboard.
+		// We verify market status inside lock? Or outside? Outside is better for latency, but we need config.
+		// Config is constant? Yes.
+		// Let's do a quick clock check here or assume caller behavior?
+		// Actually, let's just use the boolean flag logic.
 
-	if sendHB {
-		activeCount := 0
-		for _, pos := range w.state.Positions {
-			if pos.Status == "ACTIVE" {
-				activeCount++
+		// Logic:
+		// 1. Always check risk (Stop Loss, etc) - This is already done below in this function (lines 800+).
+		// 2. Decide if we send the dashboard.
+
+		// For now, we just mark it. We can't call GetClock inside here effectively if we want to minimize lock time,
+		// but risk checks do network calls anyway.
+
+		if w.config.AutoStatusEnabled {
+			// We will check market status implicitly by calling getMarketStatus or just getStatus later.
+			// But we only want to send if Open?
+			// The Spec says: "If market is OPEN...".
+			// We can defer the check to the sending block outside the lock.
+			sendDashboard = true
+		} else {
+			// Standard 24h Heartbeat for fallback
+			if w.state.LastHeartbeat == "" {
+				sendDashboard = true
+			} else {
+				lastHB, _ := time.Parse(time.RFC3339, w.state.LastHeartbeat)
+				if time.Since(lastHB) >= 24*time.Hour {
+					sendDashboard = true
+				}
 			}
 		}
 
-		equity, eqErr := w.provider.GetEquity()
-		equityStr := fmt.Sprintf("$%.2f", equity)
-		if eqErr != nil {
-			equityStr = "Error fetching"
-			log.Printf("Error fetching equity: %v", eqErr)
+		if sendDashboard {
+			w.state.LastHeartbeat = time.Now().In(config.CetLoc).Format(time.RFC3339)
+		}
+	}()
+
+	// 2. Dashboard Delivery (Outside Lock)
+	if sendDashboard {
+		// Verify Market Status if strictly required by Spec 34, or just send it?
+		// "If market is OPEN".
+		clock, err := w.provider.GetClock()
+		isMarketOpen := err == nil && clock.IsOpen
+
+		// Force send if it's the 24h fallback, OR if Market Open + Enabled.
+		// If AutoStatus is enabled, we send ONLY if open? Or always?
+		// Spec 32/34 nuances: "During market hours".
+		// So if Closed, skip?
+		// But if 24h passed, we want a heartbeat regardless of market status.
+
+		shouldSend := false
+		if w.config.AutoStatusEnabled {
+			if isMarketOpen {
+				shouldSend = true
+			}
+		} else {
+			shouldSend = true // 24h fallback logic triggered
 		}
 
-		uptimeDuration := time.Since(startTime).Round(time.Second)
-
-		hbMsg := fmt.Sprintf("💓 *HEARTBEAT*\n"+
-			"Uptime: %s\n"+
-			"Active Positions: %d\n"+
-			"Equity: %s\n"+
-			"System: Nominal",
-			uptimeDuration.String(), activeCount, equityStr)
-
-		telegram.Notify(hbMsg)
-		telegram.Notify(hbMsg)
-		w.state.LastHeartbeat = time.Now().In(config.CetLoc).Format(time.RFC3339)
+		if shouldSend {
+			msg := w.getStatus()
+			telegram.Notify(msg)
+		}
 	}
+
+	// 3. Re-acquire lock for Risk Logic (legacy structure compatibility)
+	// The original code had Risk Logic INSIDE the functionality.
+	// We split it. We need to run risk check logic.
+	// We can put Risk Logic in its own method `checkRisk()`?
+	// Or just do it here. The original function was monolithic.
+	// Let's run risk check here.
+	w.checkRisk()
+}
+
+// checkRisk iterates positions and checks for triggers.
+func (w *Watcher) checkRisk() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 
 	// --- QUEUED ORDER CHECK (Empty Portfolio) ---
 	if len(w.state.Positions) == 0 {
 		openOrders, err := w.provider.ListOrders("open")
 		if err == nil && len(openOrders) > 0 {
-			// Alert logic: We should avoid spamming every minute.
-			// Ideally we use a persistent "LastQueuedAlert" akin to LastHeartbeat.
-			// But for now, specs say: "During the 1-hour polling cycle".
-			// Since PollInterval is 60m, we can just send it.
-			// However, if we fail fallback to 1min? No, config says 60.
-
-			// Let's filter for accepted/new/calculated? "open" covers all working statuses.
-
 			var sb strings.Builder
 			sb.WriteString("⏳ *WAITING FOR MARKET OPEN*\n")
 			for _, o := range openOrders {
-				sb.WriteString(fmt.Sprintf("• %s %s shares of %s are queued.\n", o.Side, o.Qty, o.Symbol))
+				qtyStr := "0"
+				if o.Qty != nil {
+					qtyStr = o.Qty.String()
+				}
+				sb.WriteString(fmt.Sprintf("• %s %s shares of %s are queued.\n", o.Side, qtyStr, o.Symbol))
 			}
 			telegram.Notify(sb.String())
 		}
@@ -828,26 +866,30 @@ func (w *Watcher) Poll() {
 		}
 
 		// Update High Water Mark if applicable
-		if pos.HighWaterMark == 0 || price > pos.HighWaterMark {
-			log.Printf("[%s] New High Water Mark: $%.2f (Old: $%.2f)", pos.Ticker, price, pos.HighWaterMark)
+		if pos.HighWaterMark.IsZero() || price.GreaterThan(pos.HighWaterMark) {
+			log.Printf("[%s] New High Water Mark: $%s (Old: $%s)", pos.Ticker, price.StringFixed(2), pos.HighWaterMark.StringFixed(2))
 			w.state.Positions[i].HighWaterMark = price
 			pos.HighWaterMark = price // Update local copy for calculations below
 		}
 
-		log.Printf("[%s] Current: $%.2f | SL: $%.2f | TP: $%.2f | HWM: $%.2f", pos.Ticker, price, pos.StopLoss, pos.TakeProfit, pos.HighWaterMark)
+		log.Printf("[%s] Current: $%s | SL: $%s | TP: $%s | HWM: $%s", pos.Ticker, price.StringFixed(2), pos.StopLoss.StringFixed(2), pos.TakeProfit.StringFixed(2), pos.HighWaterMark.StringFixed(2))
 
 		// Check Trailing Stop
 		triggeredTS := false
-		if pos.TrailingStopPct > 0 && pos.HighWaterMark > 0 {
-			trailingTriggerPrice := pos.HighWaterMark * (1 - pos.TrailingStopPct/100)
-			if price <= trailingTriggerPrice {
+		if pos.TrailingStopPct.GreaterThan(decimal.Zero) && pos.HighWaterMark.GreaterThan(decimal.Zero) {
+			// trailingTrigger = HWM * (1 - pct/100)
+			multiplier := decimal.NewFromInt(100).Sub(pos.TrailingStopPct).Div(decimal.NewFromInt(100))
+			trailingTriggerPrice := pos.HighWaterMark.Mul(multiplier)
+
+			if price.LessThanOrEqual(trailingTriggerPrice) {
 				triggeredTS = true
-				log.Printf("[%s] Trailing Stop Triggered! Price $%.2f <= Trigger $%.2f", pos.Ticker, price, trailingTriggerPrice)
+				log.Printf("[%s] Trailing Stop Triggered! Price $%s <= Trigger $%s", pos.Ticker, price.StringFixed(2), trailingTriggerPrice.StringFixed(2))
 			}
 		}
 
 		// Check triggers (Stop Loss / Take Profit / Trailing Stop)
-		if price <= pos.StopLoss || price >= pos.TakeProfit || triggeredTS {
+		// We use strict > for TP and <= for SL
+		if price.LessThanOrEqual(pos.StopLoss) || price.GreaterThanOrEqual(pos.TakeProfit) || triggeredTS {
 			// Debounce/Check if already pending
 			if _, exists := w.pendingActions[pos.Ticker]; exists {
 				continue
@@ -855,7 +897,7 @@ func (w *Watcher) Poll() {
 
 			actionType := "STOP LOSS"
 			triggerType := "SL"
-			if price >= pos.TakeProfit {
+			if price.GreaterThanOrEqual(pos.TakeProfit) {
 				actionType = "TAKE PROFIT"
 				triggerType = "TP"
 			} else if triggeredTS {
@@ -872,7 +914,7 @@ func (w *Watcher) Poll() {
 			}
 
 			// Send Interactive Message
-			msg := fmt.Sprintf("🚨 *POLL ALERT: %s*\nAsset: %s\nPrice: $%.2f\nAction: SELL REQUIRED", actionType, pos.Ticker, price)
+			msg := fmt.Sprintf("🚨 *POLL ALERT: %s*\nAsset: %s\nPrice: $%s\nAction: SELL REQUIRED", actionType, pos.Ticker, price.StringFixed(2))
 
 			buttons := []telegram.Button{
 				{Text: "✅ CONFIRM", CallbackData: fmt.Sprintf("CONFIRM_%s_%s", triggerType, pos.Ticker)},
@@ -884,15 +926,6 @@ func (w *Watcher) Poll() {
 	}
 
 	// Spec 32: Automated Operational Awareness
-	if w.config.AutoStatusEnabled {
-		clock, err := w.provider.GetClock()
-		if err == nil && clock.IsOpen {
-			statusMsg := w.getStatus()
-			telegram.Notify(statusMsg)
-		} else if err != nil {
-			log.Printf("[ERROR] Auto-Status failed to get clock: %v", err)
-		}
-	}
 
 	w.state.LastSync = time.Now().In(config.CetLoc).Format(time.RFC3339)
 	storage.SaveState(w.state)

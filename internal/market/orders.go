@@ -8,11 +8,10 @@ import (
 // PlaceOrder executes a market order.
 // Side should be "buy" or "sell".
 // Side should be "buy" or "sell".
-func (a *AlpacaProvider) PlaceOrder(ticker string, qty float64, side string) (*alpaca.Order, error) {
-	qtyDec := decimal.NewFromFloat(qty)
+func (a *AlpacaProvider) PlaceOrder(ticker string, qty decimal.Decimal, side string) (*alpaca.Order, error) {
 	req := alpaca.PlaceOrderRequest{
 		Symbol:      ticker,
-		Qty:         &qtyDec,
+		Qty:         &qty,
 		Side:        alpaca.Side(side),
 		Type:        alpaca.Market,
 		TimeInForce: alpaca.GTC,

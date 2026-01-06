@@ -1,29 +1,29 @@
 {
   "version": "1.3",
-  "last_sync": "2026-01-06T17:02:00+01:00",
+  "last_sync": "2026-01-06T17:34:53+01:00",
   "last_heartbeat": "2026-01-06T13:10:20+01:00",
   "positions": [
     {
-      "ticker": "ITA",
-      "quantity": 1,
-      "entry_price": 228.005,
-      "stop_loss": 0,
-      "take_profit": 0,
+      "ticker": "URA",
+      "quantity": "3",
+      "entry_price": "48.74",
+      "stop_loss": "46.5",
+      "take_profit": "60",
       "status": "ACTIVE",
-      "thesis_id": "IMPORTED_1767715437",
-      "high_water_mark": 228.005,
-      "trailing_stop_pct": 0
+      "thesis_id": "MANUAL_1767717690",
+      "high_water_mark": "48.74",
+      "trailing_stop_pct": "5"
     },
     {
-      "ticker": "URA",
-      "quantity": 3,
-      "entry_price": 49,
-      "stop_loss": 0,
-      "take_profit": 0,
+      "ticker": "XBI",
+      "quantity": "1",
+      "entry_price": "120.91",
+      "stop_loss": "116",
+      "take_profit": "148",
       "status": "ACTIVE",
-      "thesis_id": "IMPORTED_1767715437",
-      "high_water_mark": 49,
-      "trailing_stop_pct": 0
+      "thesis_id": "MANUAL_1767717719",
+      "high_water_mark": "120.91",
+      "trailing_stop_pct": "4.5"
     }
   ]
 }

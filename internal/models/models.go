@@ -1,20 +1,22 @@
 package models
 
+import "github.com/shopspring/decimal"
+
 // Position represents a single trading position.
 //
 // In Go, structs are collections of fields.
 // The text inside the backticks (e.g. `json:"ticker"`) are "struct tags".
 // They tell the JSON encoder/decoder which keys to map to these fields.
 type Position struct {
-	Ticker          string  `json:"ticker"`            // The stock symbol (e.g., "AAPL")
-	Quantity        float64 `json:"quantity"`          // Number of shares held
-	EntryPrice      float64 `json:"entry_price"`       // Price at which we bought
-	StopLoss        float64 `json:"stop_loss"`         // Price at which we sell to limit loss
-	TakeProfit      float64 `json:"take_profit"`       // Price at which we sell to take profit
-	Status          string  `json:"status"`            // e.g., "ACTIVE", "TRIGGERED_SL", "TRIGGERED_TS"
-	ThesisID        string  `json:"thesis_id"`         // ID linking to the trade thesis
-	HighWaterMark   float64 `json:"high_water_mark"`   // Highest price reached since entry
-	TrailingStopPct float64 `json:"trailing_stop_pct"` // Trailing Stop percentage (e.g., 5.0 for 5%)
+	Ticker          string          `json:"ticker"`            // The stock symbol (e.g., "AAPL")
+	Quantity        decimal.Decimal `json:"quantity"`          // Number of shares held
+	EntryPrice      decimal.Decimal `json:"entry_price"`       // Price at which we bought
+	StopLoss        decimal.Decimal `json:"stop_loss"`         // Price at which we sell to limit loss
+	TakeProfit      decimal.Decimal `json:"take_profit"`       // Price at which we sell to take profit
+	Status          string          `json:"status"`            // e.g., "ACTIVE", "TRIGGERED_SL", "TRIGGERED_TS"
+	ThesisID        string          `json:"thesis_id"`         // ID linking to the trade thesis
+	HighWaterMark   decimal.Decimal `json:"high_water_mark"`   // Highest price reached since entry
+	TrailingStopPct decimal.Decimal `json:"trailing_stop_pct"` // Trailing Stop percentage (e.g., 5.0 for 5%)
 }
 
 // PortfolioState tracks the state of the portfolio and system.
