@@ -441,7 +441,7 @@ func (w *Watcher) getStatus() string {
 				if dayPL.IsNegative() {
 					icon = "🔴"
 				}
-				dayPLStr = fmt.Sprintf("%s%s", icon, dayPL.StringFixed(0))
+				dayPLStr = fmt.Sprintf("%s%s", icon, dayPL.StringFixed(2))
 			}
 
 			// Total P/L
@@ -454,7 +454,7 @@ func (w *Watcher) getStatus() string {
 			}
 
 			sb.WriteString(fmt.Sprintf("`%-6s | %-6s | %s | %s%s`\n",
-				d.Ticker, d.Current.StringFixed(2), dayPLStr, totIcon, totPL.StringFixed(0)))
+				d.Ticker, d.Current.StringFixed(2), dayPLStr, totIcon, totPL.StringFixed(2)))
 
 			// Context line
 			distSL := "N/A"
@@ -725,7 +725,7 @@ func (w *Watcher) getListSafe() string {
 		activeFound = true
 
 		price, err := w.provider.GetPrice(pos.Ticker)
-		priceStr := fmt.Sprintf("$%.2f", price)
+		priceStr := fmt.Sprintf("$%s", price.StringFixed(2))
 		distSL := "N/A"
 
 		if err != nil {
