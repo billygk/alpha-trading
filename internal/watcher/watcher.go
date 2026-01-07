@@ -76,16 +76,16 @@ func New(cfg *config.Config, provider market.MarketProvider) *Watcher {
 		lastAlerts:       make(map[string]time.Time),
 		config:           cfg,
 		commands: []CommandDoc{
-			{"/status", "Current portfolio status and equity", "/status"},
+			{"/buy", "Propose a new trade", "/buy <ticker> <qty> [sl] [tp]"},
+			{"/sell", "Liquidate and clean state", "/sell <ticker>"},
+			{"/refresh", "Sync local state with Alpaca truth", "/refresh"},
+			{"/status", "Immediate Rich Dashboard", "/status"},
 			{"/list", "List active positions", "/list"},
 			{"/price", "Get real-time price for a ticker", "/price AAPL"},
 			{"/market", "Check market status", "/market"},
 			{"/search", "Search for assets by name/ticker", "/search Apple"},
 			{"/ping", "Check bot latency", "/ping"},
 			{"/help", "Show this help message", "/help"},
-			{"/buy", "Propose a new trade", "/buy AAPL 1 [sl] [tp]"},
-			{"/scan", "Check sector health", "/scan energy"},
-			{"/update", "Update SL/TP for position", "/update AAPL 200 250"},
 		},
 	}
 
@@ -145,6 +145,10 @@ func (w *Watcher) HandleCommand(cmd string) string {
 	case "/update":
 		return w.handleUpdateCommand(parts)
 	case "/refresh":
+		// Spec 44: Command Purity Enforcement
+		if len(parts) > 1 {
+			return "⚠️ Error: /refresh does not accept parameters. Use /sell then /buy to change settings."
+		}
 		return w.handleRefreshCommand()
 	default:
 		return "Unknown command. Try /buy, /status, /sell, /refresh or /scan."

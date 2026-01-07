@@ -425,3 +425,38 @@ Call alpaca.GetClock().
 IF is_open == true: Automatically send the Point 33 Dashboard to Telegram.
 Configuration: Use AUTO_STATUS_ENABLED=true in .env to toggle this behavior.
 
+## 44. Command Purity Enforcement
+Objective: Maintain a strictly transactional interface by banning "Mid-flight Patching."
+Logic: The /refresh command MUST NOT accept parameters. It is a read-only reconciliation tool.
+Workflow: To change parameters, the user must /sell and then /buy with new values.
+
+## 45. Strategic Entry Guardrails (/buy)
+Objective: Ensure that the /buy command calculates stops based on the actual intended risk.
+Logic: If SL/TP are omitted, the bot must present a "Trade Proposal" in Telegram showing the calculated prices based on LatestTrade before the user confirms.
+
+## 46. (Reserved for Future Logic Consolidation)
+
+## 47. (Reserved for Future Logic Consolidation)
+
+## 48. Refactored Help System (/help)
+Objective: Update the command registry to reflect the simplified, transactional nature of the bot.
+Registry:
+/buy <ticker> <qty> [sl] [tp]: Deploy capital (0/omitted uses defaults).
+/sell <ticker>: Liquidate and clean state.
+/refresh: Sync local state with Alpaca truth.
+/status: Immediate Rich Dashboard.
+
+## 49. Market Close Performance Report (The EOD Briefing)
+Objective: Provide a comprehensive financial summary immediately after the US Market close.
+Trigger: Monitor alpaca.GetClock(). Trigger when clock.IsOpen transitions from true to false (approx. 22:01 CET).
+Data Acquisition:
+Pillar 1 (Current): alpaca.ListPositions() for unrealized stats.
+Pillar 2 (Historical): alpaca.GetPortfolioHistory(period="1D") for the daily equity curve.
+Pillar 3 (Realized): alpaca.ListOrders(status="closed") filtered by current date to find positions closed during the session.
+Report Structure (Telegram):
+Header: 📊 MARKET CLOSE REPORT - [YYYY-MM-DD]
+Section A (Account Level): Daily Change (%), Total Alpha since start (%), Ending Equity.
+Section B (Per Asset Table): Ticker | Day W/L | Total W/L.
+Section C (Realized Today): List final P/L for any trades closed since 09:30 EST.
+Precision: All calculations MUST use shopspring/decimal.
+Persistence: Append the finalized report to daily_performance.log for auditability.

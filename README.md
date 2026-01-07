@@ -103,6 +103,7 @@ Proposes a new long position.
 
 ### `/refresh`
 Force-syncs local state with Alpaca.
+- **Note**: Accepts NO parameters. To change risk settings, use `/sell` then `/buy`.
 - **Clean**: Removes local positions not found on broker.
 - **Import**: Adds broker positions not found locally (assigns default SL/TP).
 - **Update**: Re-syncs `Qty` and `EntryPrice`.

@@ -1,7 +1,7 @@
 {
   "version": "1.3",
-  "last_sync": "2026-01-06T21:25:22+01:00",
-  "last_heartbeat": "2026-01-06T21:25:21+01:00",
+  "last_sync": "2026-01-07T20:15:09+01:00",
+  "last_heartbeat": "2026-01-07T20:15:08+01:00",
   "positions": [
     {
       "ticker": "URA",
@@ -22,7 +22,7 @@
       "take_profit": "133.034",
       "status": "ACTIVE",
       "thesis_id": "IMPORTED_1767728310",
-      "high_water_mark": "121.72",
+      "high_water_mark": "124.19",
       "trailing_stop_pct": "3"
     }
   ]

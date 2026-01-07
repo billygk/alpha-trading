@@ -350,5 +350,14 @@ Next Steps: Monitor deployments.
 - Next Steps: Release.
 ---
 
-<!-- END_OF_LOG -->
+---
+## [2026-01-07] Consolidate Command Logic (Specs 44, 45, 48)
+- Action: Enforced Command Purity and Updated Documentation.
+- Result: 
+  - **Spec 44**: `/refresh` now strictly rejects all parameters.
+  - **Spec 45**: Verified `/buy` transactional flow with defaults.
+  - **Spec 48**: Refactored `/help` output to be cleaner and more example-driven.
+- Next Steps: Implement Market Close Report (Spec 49).
+---
 
+<!-- END_OF_LOG -->
