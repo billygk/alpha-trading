@@ -3,6 +3,7 @@ package watcher
 import (
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -34,6 +35,7 @@ type Watcher struct {
 	pendingActions   map[string]PendingAction
 	pendingProposals map[string]PendingProposal
 	lastAlerts       map[string]time.Time // To prevent alert fatigue (Spec 38)
+	wasMarketOpen    bool                 // For EOD trigger (Spec 49)
 	config           *config.Config
 }
 
@@ -75,6 +77,7 @@ func New(cfg *config.Config, provider market.MarketProvider) *Watcher {
 		pendingProposals: make(map[string]PendingProposal),
 		lastAlerts:       make(map[string]time.Time),
 		config:           cfg,
+		wasMarketOpen:    false, // Default to false, will sync on first poll
 		commands: []CommandDoc{
 			{"/buy", "Propose a new trade", "/buy <ticker> <qty> [sl] [tp]"},
 			{"/sell", "Liquidate and clean state", "/sell <ticker>"},
@@ -874,6 +877,8 @@ func (w *Watcher) getListSafe() string {
 }
 
 func (w *Watcher) Poll() {
+	w.checkEOD()
+
 	var sendDashboard bool
 
 	// 1. Critical Section: State Management & Risk Checks
@@ -1079,4 +1084,161 @@ func (w *Watcher) checkRisk() {
 
 	w.state.LastSync = time.Now().In(config.CetLoc).Format(time.RFC3339)
 	storage.SaveState(w.state)
+}
+
+// checkEOD handles the Market Close detection and Reporting (Spec 49)
+func (w *Watcher) checkEOD() {
+	clock, err := w.provider.GetClock()
+	if err != nil {
+		log.Printf("Error fetching market clock: %v", err)
+		return
+	}
+
+	// EOD Trigger: Transition from Open -> Closed
+	// Only trigger if we mistakenly thought it was open (or tracked it as open) and now it is closed.
+	if w.wasMarketOpen && !clock.IsOpen {
+		log.Println("📉 MARKET CLOSED. Generating EOD Report (Spec 49)...")
+		go w.generateAndSendEODReport()
+	}
+	w.wasMarketOpen = clock.IsOpen
+}
+
+// generateAndSendEODReport implements Spec 49
+func (w *Watcher) generateAndSendEODReport() {
+	// 1. Fetch Data
+	// Pillar 1: Current Positions (Unrealized)
+	positions, err := w.provider.ListPositions()
+	if err != nil {
+		log.Printf("EOD Error: Failed to list positions: %v", err)
+		return
+	}
+
+	// Pillar 2: Historical (Equity Curve) - Get 1D history
+	history, err := w.provider.GetPortfolioHistory("1D", "1Min")
+	if err != nil {
+		log.Printf("EOD Error: Failed to get history: %v", err)
+	}
+
+	// Pillar 3: Realized Today
+	closedOrders, err := w.provider.ListOrders("closed")
+	if err != nil {
+		log.Printf("EOD Error: Failed to list closed orders: %v", err)
+	}
+
+	// 2. Calculations
+	var startEquity, endEquity decimal.Decimal
+	if history != nil && len(history.Equity) > 0 {
+		startEquity = history.Equity[0]
+		endEquity = history.Equity[len(history.Equity)-1]
+	} else {
+		// Fallback if history fails
+		endEquity, _ = w.provider.GetEquity()
+	}
+
+	// Calculate Daily Change
+	dailyChangePct := decimal.Zero
+	if !startEquity.IsZero() {
+		dailyChangePct = endEquity.Sub(startEquity).Div(startEquity).Mul(decimal.NewFromInt(100))
+	}
+
+	// Filter Realized Orders (Today Only)
+	var realizedToday []string
+	loc, _ := time.LoadLocation("Europe/Madrid") // Or use config.CetLoc if exported
+	now := time.Now().In(loc)
+	y, m, d := now.Date()
+
+	for _, o := range closedOrders {
+		if o.FilledAt == nil {
+			continue
+		}
+		// Convert to CET/Target Time
+		ft := o.FilledAt.In(loc)
+		ty, tm, td := ft.Date()
+		if ty == y && tm == m && td == d {
+			price := decimal.Zero
+			if o.FilledAvgPrice != nil {
+				price = *o.FilledAvgPrice
+			}
+			qty := decimal.Zero
+			if o.Qty != nil {
+				qty = *o.Qty
+			}
+			realizedToday = append(realizedToday, fmt.Sprintf("%s %s %s @ $%s", o.Side, o.Symbol, qty.String(), price.StringFixed(2)))
+		}
+	}
+
+	// 3. Report Formatting
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("📊 *MARKET CLOSE REPORT - %s*\n\n", now.Format("2006-01-02")))
+
+	// Section A: Account
+	icon := "🟢"
+	if dailyChangePct.IsNegative() {
+		icon = "🔴"
+	}
+	sb.WriteString(fmt.Sprintf("*Account Summary*\n"))
+	sb.WriteString(fmt.Sprintf("End Equity: $%s\n", endEquity.StringFixed(2)))
+	sb.WriteString(fmt.Sprintf("Daily Change: %s%s%%\n\n", icon, dailyChangePct.StringFixed(2)))
+
+	// Section B: Per Asset Table (Unrealized)
+	if len(positions) > 0 {
+		sb.WriteString("`Ticker | Day % | Tot %`\n")
+		sb.WriteString("`---------------------`\n")
+		for _, p := range positions {
+			dayChange := decimal.Zero
+			if p.ChangeToday != nil {
+				dayChange = p.ChangeToday.Mul(decimal.NewFromInt(100))
+			}
+			entry := p.AvgEntryPrice
+			current := *p.CurrentPrice // Assume safe
+			totPct := decimal.Zero
+			if !entry.IsZero() {
+				totPct = current.Sub(entry).Div(entry).Mul(decimal.NewFromInt(100))
+			}
+
+			sb.WriteString(fmt.Sprintf("`%-6s | %5s%%| %5s%%`\n",
+				p.Symbol, dayChange.StringFixed(2), totPct.StringFixed(2)))
+		}
+		sb.WriteString("\n")
+	} else {
+		sb.WriteString("ℹ️ No active positions carried overnight.\n\n")
+	}
+
+	// Section C: Realized
+	if len(realizedToday) > 0 {
+		sb.WriteString("*Activity Today*\n")
+		// Limit length carefully
+		if len(realizedToday) > 10 {
+			for i := 0; i < 5; i++ {
+				sb.WriteString(fmt.Sprintf("• %s\n", realizedToday[i]))
+			}
+			sb.WriteString(fmt.Sprintf("...and %d more.\n", len(realizedToday)-5))
+		} else {
+			for _, line := range realizedToday {
+				sb.WriteString(fmt.Sprintf("• %s\n", line))
+			}
+		}
+	} else {
+		sb.WriteString("ℹ️ No trades closed today.")
+	}
+
+	report := sb.String()
+
+	// 4. Send & Persist
+	telegram.Notify(report)
+	w.saveDailyPerformance(report)
+}
+
+func (w *Watcher) saveDailyPerformance(report string) {
+	// Append to daily_performance.log
+	f, err := os.OpenFile("daily_performance.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Printf("Error opening daily_performance.log: %v", err)
+		return
+	}
+	defer f.Close()
+
+	if _, err := f.WriteString(fmt.Sprintf("\n--- %s ---\n%s\n", time.Now().Format("2006-01-02 15:04:05"), report)); err != nil {
+		log.Printf("Error writing to daily log: %v", err)
+	}
 }

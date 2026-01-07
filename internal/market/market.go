@@ -25,6 +25,7 @@ type MarketProvider interface {
 	CancelOrder(orderID string) error
 	GetBuyingPower() (decimal.Decimal, error)
 	GetBars(ticker string, limit int) ([]marketdata.Bar, error)
+	GetPortfolioHistory(period string, timeframe string) (*alpaca.PortfolioHistory, error)
 }
 
 // AlpacaProvider is a concrete implementation of MarketProvider for the Alpaca API.
@@ -130,4 +131,12 @@ func (a *AlpacaProvider) GetBars(ticker string, limit int) ([]marketdata.Bar, er
 	}
 
 	return bars, nil
+}
+
+// GetPortfolioHistory fetches the portfolio history for a specific period and timeframe.
+func (a *AlpacaProvider) GetPortfolioHistory(period string, timeframe string) (*alpaca.PortfolioHistory, error) {
+	return a.tradeClient.GetPortfolioHistory(alpaca.GetPortfolioHistoryRequest{
+		Period:    period,
+		TimeFrame: alpaca.TimeFrame(timeframe),
+	})
 }
