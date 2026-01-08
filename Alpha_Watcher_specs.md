@@ -460,3 +460,18 @@ Section B (Per Asset Table): Ticker | Day W/L | Total W/L.
 Section C (Realized Today): List final P/L for any trades closed since 09:30 EST.
 Precision: All calculations MUST use shopspring/decimal.
 Persistence: Append the finalized report to daily_performance.log for auditability.
+
+## 50. Raw State Inspection (/profile)
+Objective: Provide a low-level debugging tool to verify the integrity of the portfolio_state.json file.
+Command: /profile.
+Logic:
+The bot MUST read the portfolio_state.json file from the disk.
+It MUST handle the content as a string for chunking.
+Multi-Message Guardrails (Chunking Strategy):
+Logic: If the file content exceeds 3900 characters (leaving room for overhead), the bot MUST split the string into multiple chunks.
+Formatting: Each chunk MUST be independently wrapped in ```json and ``` tags.
+Sequencing: Include a header in the first message (e.g., Portfolio State (Part 1/N):) and subsequent headers for others.
+Implementation:
+Use os.ReadFile to get raw data.
+Use a loop to iterate through the string in steps of 3900 characters.
+Send each segment as a separate sendMessage request to the Telegram API.

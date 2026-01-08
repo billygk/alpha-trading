@@ -88,6 +88,7 @@ func New(cfg *config.Config, provider market.MarketProvider) *Watcher {
 			{"/market", "Check market status", "/market"},
 			{"/search", "Search for assets by name/ticker", "/search Apple"},
 			{"/ping", "Check bot latency", "/ping"},
+			{"/profile", "Dump raw portfolio_state.json for debugging", "/profile"},
 			{"/help", "Show this help message", "/help"},
 		},
 	}
@@ -143,6 +144,8 @@ func (w *Watcher) HandleCommand(cmd string) string {
 		return w.handleBuyCommand(parts)
 	case "/scan":
 		return w.handleScanCommand(parts)
+	case "/profile":
+		return w.handleProfileCommand()
 	case "/sell":
 		return w.handleSellCommand(parts)
 	case "/update":
@@ -1176,7 +1179,7 @@ func (w *Watcher) generateAndSendEODReport() {
 	if dailyChangePct.IsNegative() {
 		icon = "🔴"
 	}
-	sb.WriteString(fmt.Sprintf("*Account Summary*\n"))
+	sb.WriteString("*Account Summary*\n")
 	sb.WriteString(fmt.Sprintf("End Equity: $%s\n", endEquity.StringFixed(2)))
 	sb.WriteString(fmt.Sprintf("Daily Change: %s%s%%\n\n", icon, dailyChangePct.StringFixed(2)))
 
@@ -1241,4 +1244,48 @@ func (w *Watcher) saveDailyPerformance(report string) {
 	if _, err := f.WriteString(fmt.Sprintf("\n--- %s ---\n%s\n", time.Now().Format("2006-01-02 15:04:05"), report)); err != nil {
 		log.Printf("Error writing to daily log: %v", err)
 	}
+}
+
+// handleProfileCommand implements Spec 50: Raw State Inspection
+// It reads the local portfolio_state.json and returns it as a code block.
+// Refined Logic: Chunks content if > 3900 chars (Spec 50 Refinement).
+func (w *Watcher) handleProfileCommand() string {
+	// 1. Read the file
+	data, err := os.ReadFile("portfolio_state.json")
+	if err != nil {
+		log.Printf("Error reading portfolio_state.json: %v", err)
+		return fmt.Sprintf("⚠️ Failed to read local state file: %v", err)
+	}
+
+	content := string(data)
+	contentLen := len(content)
+	chunkSize := 3900
+
+	// 2. Simple Case: Fits in one message
+	if contentLen <= chunkSize {
+		return fmt.Sprintf("Portfolio State JSON (Part 1/1):\n```json\n%s\n```", content)
+	}
+
+	// 3. Complex Case: Multi-part Chunking
+	chunks := (contentLen + chunkSize - 1) / chunkSize // ceil division
+
+	for i := 0; i < chunks; i++ {
+		start := i * chunkSize
+		end := start + chunkSize
+		if end > contentLen {
+			end = contentLen
+		}
+
+		chunk := content[start:end]
+		msg := fmt.Sprintf("Portfolio State JSON (Part %d/%d):\n```json\n%s\n```", i+1, chunks, chunk)
+
+		// Proactively send to avoid return-value size limits or timeouts
+		// Telegram API rate limits might hit if chunks are plenty, but for state.json (<100KB) it's fine.
+		telegram.Notify(msg)
+
+		// Small sleep to ensure ordering (Telegram API race condition mitigation)
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	return "" // Handled proactively
 }
