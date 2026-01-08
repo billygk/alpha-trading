@@ -461,9 +461,9 @@ Section C (Realized Today): List final P/L for any trades closed since 09:30 EST
 Precision: All calculations MUST use shopspring/decimal.
 Persistence: Append the finalized report to daily_performance.log for auditability.
 
-## 50. Raw State Inspection (/profile)
+## 50. Raw State Inspection (/portfolio)
 Objective: Provide a low-level debugging tool to verify the integrity of the portfolio_state.json file.
-Command: /profile.
+Command: /portfolio.
 Logic:
 The bot MUST read the portfolio_state.json file from the disk.
 It MUST handle the content as a string for chunking.

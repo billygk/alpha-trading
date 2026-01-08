@@ -380,7 +380,7 @@ Next Steps: Monitor deployments.
 ## [2026-01-08] Implemented Spec 50: Raw State Inspection
 - Action: Implemented `/profile` command for low-level debugging.
 - Result:
-  - Spec 50: `/profile` allows admins to dump the raw `portfolio_state.json`.
+  - Spec 50: `/portfolio` (renamed from `/profile`) allows admins to dump the raw `portfolio_state.json`.
   - Refinement: Output is chunked into multiple messages (3900 chars) if file is large.
 - Next Steps: Verify in production.
 ---

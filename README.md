@@ -116,7 +116,7 @@ Manually update the risk parameters for an active position.
 ### `/scan <sector>`
 (Experimental) Checks sector health/sentiment.
 
-### `/profile`
+### `/portfolio`
 Dump the raw `portfolio_state.json` file for debugging purposes.
 - **Chunking**: Output is split into multiple messages if the file exceeds 3900 characters.
 

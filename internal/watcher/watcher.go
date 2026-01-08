@@ -88,7 +88,7 @@ func New(cfg *config.Config, provider market.MarketProvider) *Watcher {
 			{"/market", "Check market status", "/market"},
 			{"/search", "Search for assets by name/ticker", "/search Apple"},
 			{"/ping", "Check bot latency", "/ping"},
-			{"/profile", "Dump raw portfolio_state.json for debugging", "/profile"},
+			{"/portfolio", "Dump raw portfolio_state.json for debugging", "/portfolio"},
 			{"/help", "Show this help message", "/help"},
 		},
 	}
@@ -144,8 +144,8 @@ func (w *Watcher) HandleCommand(cmd string) string {
 		return w.handleBuyCommand(parts)
 	case "/scan":
 		return w.handleScanCommand(parts)
-	case "/profile":
-		return w.handleProfileCommand()
+	case "/portfolio":
+		return w.handlePortfolioCommand()
 	case "/sell":
 		return w.handleSellCommand(parts)
 	case "/update":
@@ -1246,10 +1246,10 @@ func (w *Watcher) saveDailyPerformance(report string) {
 	}
 }
 
-// handleProfileCommand implements Spec 50: Raw State Inspection
+// handlePortfolioCommand implements Spec 50: Raw State Inspection
 // It reads the local portfolio_state.json and returns it as a code block.
 // Refined Logic: Chunks content if > 3900 chars (Spec 50 Refinement).
-func (w *Watcher) handleProfileCommand() string {
+func (w *Watcher) handlePortfolioCommand() string {
 	// 1. Read the file
 	data, err := os.ReadFile("portfolio_state.json")
 	if err != nil {
