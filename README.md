@@ -110,6 +110,7 @@ Force-syncs local state with Alpaca.
 
 ### `/update <ticker> <sl> <tp> [ts_pct]`
 Manually update the risk parameters for an active position.
+- **Safety Gates**: Validates that `New SL < Current Price` and `New TP > Current Price`.
 - **Example**: `/update NVDA 120 160 5` (Set SL $120, TP $160, TS 5%)
 
 

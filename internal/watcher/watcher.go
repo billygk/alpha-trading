@@ -88,6 +88,7 @@ func New(cfg *config.Config, provider market.MarketProvider) *Watcher {
 			{"/market", "Check market status", "/market"},
 			{"/search", "Search for assets by name/ticker", "/search Apple"},
 			{"/ping", "Check bot latency", "/ping"},
+			{"/update", "Update SL/TP for active position", "/update <ticker> <sl> <tp> [ts_pct]"},
 			{"/portfolio", "Dump raw portfolio_state.json for debugging", "/portfolio"},
 			{"/help", "Show this help message", "/help"},
 		},
@@ -648,6 +649,28 @@ func (w *Watcher) handleUpdateCommand(parts []string) string {
 		return "⚠️ Invalid number format."
 	}
 
+	// --- Spec 51: Intent Mutation Guardrails ---
+	// 1. Context: Get Market Price (Network Call outside lock)
+	currentPrice, err := w.provider.GetPrice(ticker)
+	if err != nil {
+		return fmt.Sprintf("⚠️ Validation Failed: Could not fetch market price for %s to verify safety.", ticker)
+	}
+
+	// 2. SL Validation
+	if !sl.LessThan(currentPrice) {
+		return fmt.Sprintf("❌ Safety Gate: New SL ($%s) must be LOWER than current price ($%s).", sl.StringFixed(2), currentPrice.StringFixed(2))
+	}
+
+	// 3. TP Validation
+	if !tp.GreaterThan(currentPrice) {
+		return fmt.Sprintf("❌ Safety Gate: New TP ($%s) must be HIGHER than current price ($%s).", tp.StringFixed(2), currentPrice.StringFixed(2))
+	}
+
+	// 4. Logical Consistency
+	if !tp.GreaterThan(sl) {
+		return "❌ Logic Error: Take Profit must be higher than Stop Loss."
+	}
+
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -665,11 +688,13 @@ func (w *Watcher) handleUpdateCommand(parts []string) string {
 	}
 
 	if !found {
-		return fmt.Sprintf("⚠️ No active position found for %s.", ticker)
+		return fmt.Sprintf("⚠️ No active position found for %s (or check portfolio_state.json).", ticker)
 	}
 
+	// Spec 51: Explicit confirmation format
 	w.saveStateAsync()
-	return fmt.Sprintf("✅ Updated %s:\nSL: $%s | TP: $%s | TS: %s%%", ticker, sl.StringFixed(2), tp.StringFixed(2), tsPct.StringFixed(2))
+	return fmt.Sprintf("✅ Parameters Updated for %s.\nNew Floor (SL): $%s | New Ceiling (TP): $%s",
+		ticker, sl.StringFixed(2), tp.StringFixed(2))
 }
 
 func (w *Watcher) handleRefreshCommand() string {

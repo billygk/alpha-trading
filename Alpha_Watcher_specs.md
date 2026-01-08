@@ -475,3 +475,22 @@ Implementation:
 Use os.ReadFile to get raw data.
 Use a loop to iterate through the string in steps of 3900 characters.
 Send each segment as a separate sendMessage request to the Telegram API.
+
+## 51. Intent Mutation Guardrails (/update) // NEW POINT
+Objective: Allow for the manual adjustment of Stop-Loss (SL) and Take-Profit (TP) levels for active positions without requiring a re-entry.
+Command Syntax: /update <ticker> <new_sl> <new_tp>.
+Validation Logic (The Safety Gates):
+Existence: Check if the ticker exists in portfolio_state.json.
+Market Context: Fetch the LatestTrade price from Alpaca.
+SL Validation: new_sl must be LOWER than the current market price (prevent immediate trigger).
+TP Validation: new_tp must be HIGHER than the current market price.
+Consistency: new_tp must be higher than new_sl.
+Execution:
+Update the fields in the local JSON using shopspring/decimal.
+Force an immediate saveState() call.
+Send a confirmation message: "✅ Parameters Updated for {{ticker}}. New Floor: ${{sl}} | New Ceiling: ${{tp}}".
+HighWaterMark Reset:
+If the new SL is part of a trailing strategy, the bot must decide whether to reset the HighWaterMark to the current price or maintain the historical peak.
+Decision: Keep historical HWM to maintain trailing integrity unless the user explicitly resets it.
+Integration: Update /help (Point 48) to include the new /update command.
+

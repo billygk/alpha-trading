@@ -384,3 +384,12 @@ Next Steps: Monitor deployments.
   - Refinement: Output is chunked into multiple messages (3900 chars) if file is large.
 - Next Steps: Verify in production.
 ---
+
+---
+## [2026-01-08] Implemented Spec 51: Intent Mutation Guardrails
+- Action: Enhanced `/update` command with safety validation logic.
+- Result:
+  - **Spec 51**: Updates now validate `NewSL < CurrentPrice`, `NewTP > CurrentPrice`, and `TP > SL`.
+  - **Integration**: Added `/update` to the `/help` registry.
+- Next Steps: Verify in production.
+---
