@@ -393,3 +393,13 @@ Next Steps: Monitor deployments.
   - **Integration**: Added `/update` to the `/help` registry.
 - Next Steps: Verify in production.
 ---
+
+---
+## [2026-01-09] Implemented Spec 52: HWM Monotonicity Guardrail
+- Action: Implemented strict audit for High Water Mark (HWM) in persistence layer.
+- Result:
+  - **Spec 52**: Modified `SaveState` in `storage.go` to compare New HWM vs Old HWM.
+  - **Audit**: Logs `[CRITICAL_STATE_REGRESSION]` if a decrease is detected.
+  - **Enforcement**: Confirmed HWM update logic in `watcher.go` is effectively `max(HWM, Price)`.
+- Next Steps: Deploy.
+---

@@ -15,6 +15,7 @@ It is designed for traders who want the precision of algorithmic execution (trai
 - **Precedence Logic**: Prioritizes `TP > SL > TS` to maximize profit capture while guaranteeing protection.
 - **Universal Temporal Gate**: All actionable alerts typically expire after 5 minutes (TTL) to prevent stale execution.
 - **Alert Fatigue Prevention**: intelligently suppresses duplicate alerts for the same position within a 15-minute window.
+- **HWM Monotonicity Guardrail**: Ensures the "High Water Mark" used for trailing stops never decreases due to systematic errors, guaranteeing the integrity of the trailing stop floor.
 
 ### 💬 Interactive Telegram Control
 - **Proposed Trades**: Use `/buy` to get a calculated trade proposal with risk/reward ratios before you commit.

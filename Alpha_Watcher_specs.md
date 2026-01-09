@@ -494,3 +494,14 @@ If the new SL is part of a trailing strategy, the bot must decide whether to res
 Decision: Keep historical HWM to maintain trailing integrity unless the user explicitly resets it.
 Integration: Update /help (Point 48) to include the new /update command.
 
+## 52. High Water Mark (HWM) Monotonicity Guardrail // NEW POINT
+Objective: Prevent "HWM Decay" where the trailing stop floor moves downward.
+Mathematical Enforcement:
+The HWM update logic MUST be: HWM = max(stored_HWM, current_price).
+Under no circumstances (except explicit /buy or /update ... reset) should the HighWaterMark value in portfolio_state.json decrease.
+Audit Implementation:
+Every time saveState() is called, the bot should verify that for all active positions, NewHWM >= OldHWM.
+If a decrease is detected, log a [CRITICAL_STATE_REGRESSION] error with the stack trace.
+Serialization Safety:
+When using shopspring/decimal, ensure the json.Marshal process does not truncate precision, which could cause "micro-decay" over time.
+

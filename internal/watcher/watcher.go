@@ -1027,6 +1027,7 @@ func (w *Watcher) checkRisk() {
 		}
 
 		// Update High Water Mark if applicable
+		// Spec 52: HWM Monotonicity: HWM = max(stored_HWM, current_price)
 		if pos.HighWaterMark.IsZero() || price.GreaterThan(pos.HighWaterMark) {
 			log.Printf("[%s] New High Water Mark: $%s (Old: $%s)", pos.Ticker, price.StringFixed(2), pos.HighWaterMark.StringFixed(2))
 			w.state.Positions[i].HighWaterMark = price
