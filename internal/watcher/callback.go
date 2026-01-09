@@ -108,6 +108,14 @@ func (w *Watcher) HandleCallback(callbackID, data string) string {
 			return msg
 		}
 
+		// Spec 54: Sequential Order Clearance
+		if err := w.ensureSequentialClearance(ticker); err != nil {
+			log.Printf("Warning: Sequential clearance failed for %s: %v", ticker, err)
+			// Proceed but warn? Or abort? Spec says "ONLY then is the bot permitted".
+			// But if it times out, we might be stuck. Let's abort to be safe strict compliance.
+			return fmt.Sprintf("❌ Execution Aborted: Could not clear pending orders for %s (Timeout).", ticker)
+		}
+
 		order, err := w.provider.PlaceOrder(ticker, qty, "sell")
 		if err != nil {
 			msg := fmt.Sprintf("❌ Execution Failed for %s: %v", ticker, err)
@@ -115,41 +123,54 @@ func (w *Watcher) HandleCallback(callbackID, data string) string {
 			return msg
 		}
 
-		// 4. Verification Check
-		time.Sleep(2 * time.Second)
-		verifiedOrder, err := w.provider.GetOrder(order.ID)
+		// Spec 53: Execution Verification
+		verifiedOrder, err := w.verifyOrderExecution(order.ID)
 		if err != nil {
-			msg := fmt.Sprintf("⚠️ Order Placed but Verification Failed: %v. Please check Alpaca dashboard.", err)
-			log.Printf("[FATAL_TRADE_ERROR] Verification failed for order %s: %v", order.ID, err)
-			// We optimize for safety: do not mark EXECUTED if we can't verify?
-			// OR mark executed but warn. Let's Warn.
+			// Spec 53 says: Send [CRITICAL] alert.
+			// Re-sync is already triggered inside verifyOrderExecution if status was fail.
+			msg := fmt.Sprintf("🚨 Critical: Order Verification Failed: %v", err)
+			log.Printf("[FATAL_TRADE_ERROR] %s", msg)
 			return msg
 		}
 
 		status := strings.ToLower(verifiedOrder.Status)
-		// Valid statuses for a "working" or "filled" order
-		validStatuses := []string{"filled", "new", "accepted", "partially_filled", "calculated", "pending_new"}
-		isValid := false
-		for _, s := range validStatuses {
-			if status == s {
-				isValid = true
-				break
+		// We trust verifyOrderExecution to return success only if it's filled or looking good?
+		// check verifyOrderExecution impl: it returns error if canceled/rejected.
+		// If it returns nil error, it might still necessarily be 'filled' if it loop finished, OR 'new' if loop timed out?
+		// My impl returns last state.
+
+		// Double check status just in case
+		if status == "canceled" || status == "rejected" || status == "expired" {
+			return fmt.Sprintf("❌ Execution Failed: Order Status %s.", status)
+		}
+
+		// 5. Update State (Only if we are confident)
+		// If status is 'filled', we are good.
+		// If status is 'new'/'accepted', we mark EXECUTED?
+		// Spec says "IF Status == 'filled': Send ... and perform saveState()".
+		// "Position Closed/Opened".
+		// What if it is still 'new' after 5 seconds?
+		// We probably strictly want 'filled'.
+		// But Market orders should fill instantly.
+		// If not filled, it means we are pending.
+		// Logic: If 'filled', mark EXECUTED. If 'new', maybe mark EXECUTED (Pending Fill)?
+		// Watcher loop will eventually see it?
+		// Spec 53: "IF Status == 'filled': Send ... and perform saveState()".
+		// Implicitly: If NOT filled, do NOT update state?
+		// But if we don't update state, we might double sell?
+		// Spec 26 (Order State Sync) prevents duplicate orders.
+		// So leaving it as ACTIVE is safer if order is pending?
+		// Let's stick to marking EXECUTED only on 'filled'.
+
+		if status == "filled" {
+			if posIndex != -1 {
+				w.state.Positions[posIndex].Status = "EXECUTED"
+				w.saveStateAsync()
 			}
+			return fmt.Sprintf("✅ ORDER PLACED: Sold %s at Market (Filled).", ticker)
 		}
 
-		if !isValid {
-			msg := fmt.Sprintf("❌ Execution Failed: Order Status is '%s' (Reason: %s). position remains ACTIVE.", status, verifiedOrder.FailedAt)
-			log.Printf("[FATAL_TRADE_ERROR] Order %s failed with status %s", order.ID, status)
-			return msg
-		}
-
-		// 5. Update State
-		if posIndex != -1 {
-			w.state.Positions[posIndex].Status = "EXECUTED"
-			w.saveStateAsync()
-		}
-
-		return fmt.Sprintf("✅ ORDER PLACED: Sold %s at Market (Status: %s).", ticker, status)
+		return fmt.Sprintf("⚠️ Order Placed but not yet Filled (Status: %s). Position remains ACTIVE.", status)
 	}
 
 	return "Unknown action."
@@ -184,6 +205,11 @@ func (w *Watcher) handleBuyCallback(data string) string {
 	}
 
 	if action == "EXECUTE" {
+		// Spec 54: Sequential Order Clearance (Safeguard)
+		if err := w.ensureSequentialClearance(ticker); err != nil {
+			return fmt.Sprintf("❌ Buy Aborted: Could not clear pending orders for %s.", ticker)
+		}
+
 		// 1. Execute Buy
 		order, err := w.provider.PlaceOrder(ticker, proposal.Qty, "buy")
 		if err != nil {
@@ -192,49 +218,47 @@ func (w *Watcher) handleBuyCallback(data string) string {
 			return msg
 		}
 
-		// 2. Verification
-		time.Sleep(2 * time.Second)
-		verifiedOrder, err := w.provider.GetOrder(order.ID)
+		// Spec 53: Execution Verification
+		verifiedOrder, err := w.verifyOrderExecution(order.ID)
 		if err != nil {
-			msg := fmt.Sprintf("⚠️ Buy Placed but Verification Failed: %v. Check Dashboard.", err)
-			log.Printf("[FATAL_TRADE_ERROR] Buy verification failed for %s: %v", order.ID, err)
+			msg := fmt.Sprintf("🚨 Critical: Buy Verification Failed: %v", err)
+			log.Printf("[FATAL_TRADE_ERROR] %s", msg)
 			return msg
 		}
 
 		status := strings.ToLower(verifiedOrder.Status)
-		validStatuses := []string{"filled", "new", "accepted", "partially_filled", "calculated", "pending_new"}
-		isValid := false
-		for _, s := range validStatuses {
-			if status == s {
-				isValid = true
-				break
+		if status == "canceled" || status == "rejected" {
+			return fmt.Sprintf("❌ Buy Failed: Order Status '%s'.", status)
+		}
+
+		if status == "filled" {
+			// 3. Add to State
+			newPos := models.Position{
+				Ticker:          ticker,
+				Quantity:        proposal.Qty,
+				EntryPrice:      proposal.Price, // Approx, ideally use verifiedOrder.FilledAvgPrice if available
+				StopLoss:        proposal.StopLoss,
+				TakeProfit:      proposal.TakeProfit,
+				Status:          "ACTIVE",
+				HighWaterMark:   proposal.Price,
+				TrailingStopPct: proposal.TrailingStopPct,
+				ThesisID:        fmt.Sprintf("MANUAL_%d", time.Now().Unix()),
 			}
+
+			// Refine EntryPrice if available
+			if verifiedOrder.FilledAvgPrice != nil {
+				newPos.EntryPrice = *verifiedOrder.FilledAvgPrice
+				newPos.HighWaterMark = *verifiedOrder.FilledAvgPrice
+			}
+
+			w.state.Positions = append(w.state.Positions, newPos)
+			w.saveStateAsync()
+
+			return fmt.Sprintf("✅ PURCHASED: %s %s @ Market (Filled).\nStatus: %s\nSL: $%s | TP: $%s\nTracking Active.",
+				proposal.Qty.StringFixed(2), ticker, status, proposal.StopLoss.StringFixed(2), proposal.TakeProfit.StringFixed(2))
 		}
 
-		if !isValid {
-			msg := fmt.Sprintf("❌ Buy Failed: Order Status '%s'.", status)
-			log.Printf("[FATAL_TRADE_ERROR] Buy Order %s failed: status %s", order.ID, status)
-			return msg
-		}
-
-		// 3. Add to State
-		newPos := models.Position{
-			Ticker:          ticker,
-			Quantity:        proposal.Qty,
-			EntryPrice:      proposal.Price, // Approx
-			StopLoss:        proposal.StopLoss,
-			TakeProfit:      proposal.TakeProfit,
-			Status:          "ACTIVE",
-			HighWaterMark:   proposal.Price,
-			TrailingStopPct: proposal.TrailingStopPct,
-			ThesisID:        fmt.Sprintf("MANUAL_%d", time.Now().Unix()),
-		}
-
-		w.state.Positions = append(w.state.Positions, newPos)
-		w.saveStateAsync()
-
-		return fmt.Sprintf("✅ PURCHASED: %s %s @ Market.\nStatus: %s\nSL: $%s | TP: $%s\nTracking Active.",
-			proposal.Qty.StringFixed(2), ticker, status, proposal.StopLoss.StringFixed(2), proposal.TakeProfit.StringFixed(2))
+		return fmt.Sprintf("⚠️ Buy Order Placed but not yet Filled (Status: %s). Position NOT yet tracked. Check /refresh later.", status)
 	}
 
 	return "Unknown buy action."

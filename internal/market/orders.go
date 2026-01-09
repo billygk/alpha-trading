@@ -14,7 +14,7 @@ func (a *AlpacaProvider) PlaceOrder(ticker string, qty decimal.Decimal, side str
 		Qty:         &qty,
 		Side:        alpaca.Side(side),
 		Type:        alpaca.Market,
-		TimeInForce: alpaca.GTC,
+		TimeInForce: alpaca.Day,
 	}
 	return a.tradeClient.PlaceOrder(req)
 }

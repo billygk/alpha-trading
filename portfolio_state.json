@@ -1,19 +1,8 @@
 {
   "version": "1.3",
-  "last_sync": "2026-01-08T19:12:15+01:00",
-  "last_heartbeat": "2026-01-08T19:12:14+01:00",
+  "last_sync": "2026-01-09T19:41:27+01:00",
+  "last_heartbeat": "2026-01-09T19:41:27+01:00",
   "positions": [
-    {
-      "ticker": "URA",
-      "quantity": "3",
-      "entry_price": "48.736667",
-      "stop_loss": "46.29983365",
-      "take_profit": "53.6103337",
-      "status": "ACTIVE",
-      "thesis_id": "IMPORTED_1767728310",
-      "high_water_mark": "49.5",
-      "trailing_stop_pct": "3"
-    },
     {
       "ticker": "XBI",
       "quantity": "1",
@@ -22,7 +11,18 @@
       "take_profit": "133.034",
       "status": "ACTIVE",
       "thesis_id": "IMPORTED_1767728310",
-      "high_water_mark": "124.19",
+      "high_water_mark": "125.05",
+      "trailing_stop_pct": "3"
+    },
+    {
+      "ticker": "APLE",
+      "quantity": "2",
+      "entry_price": "12.47",
+      "stop_loss": "11.84175",
+      "take_profit": "13.7115",
+      "status": "CLOSED",
+      "thesis_id": "MANUAL_1767983520",
+      "high_water_mark": "12.47",
       "trailing_stop_pct": "3"
     }
   ]

@@ -34,8 +34,17 @@ func Notify(text string) {
 
 	body, _ := json.Marshal(payload)
 
-	_, err := http.Post(url, "application/json", bytes.NewBuffer(body))
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(body))
 	if err != nil {
 		log.Printf("Telegram Alert Failed: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		// Read body to see error message
+		buf := new(bytes.Buffer)
+		buf.ReadFrom(resp.Body)
+		log.Printf("Telegram API Error: Status %s | Body: %s", resp.Status, buf.String())
 	}
 }

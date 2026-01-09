@@ -505,3 +505,32 @@ If a decrease is detected, log a [CRITICAL_STATE_REGRESSION] error with the stac
 Serialization Safety:
 When using shopspring/decimal, ensure the json.Marshal process does not truncate precision, which could cause "micro-decay" over time.
 
+## 53. Execution Verification & False-Positive Guardrail
+Objective: Prevent the bot from reporting "Success" to Telegram when the Broker rejects or cancels an order.
+Logic:
+Immediately after calling alpaca.PlaceOrder, the bot MUST NOT send a success message or delete the local state.
+It MUST initiate an Async Verification Loop:
+Query alpaca.GetOrder(orderID) every 1 second for 5 seconds.
+IF Status == 'filled': Send "✅ Position Closed/Opened" and perform saveState().
+IF Status == 'canceled' or 'rejected': Send a [CRITICAL] alert: "🚨 Order Failed/Canceled by Broker. Position remains in previous state. Reason: {{Alpaca_Reason}}."
+ABORT any local state deletions. The JSON must remain untouched to ensure monitoring continues.
+
+## 54. Sequential Order Clearance (Fix for Point 27 Race Condition)
+Objective: Resolve the "Locked Shares" race condition where a Market Sell is canceled because a previous Limit Order was still being canceled.
+Logic:
+In the /sell and /buy logic, the bot MUST call alpaca.ListOrders to find open orders for the ticker.
+If found, call alpaca.CancelOrder.
+THE BLOCKING WAIT: The bot MUST poll the broker (max 5 retries, 500ms apart) until ListOrders returns an empty set for that ticker.
+ONLY then is the bot permitted to call alpaca.PlaceOrder.
+
+## 55. Standardized Time-In-Force (TIF) Override
+Objective: Align bot behavior with the successful parameters identified in manual testing (Point 54 manual audit).
+Logic:
+For all Market Orders (Buy or Sell), the bot MUST explicitly use TimeInForce: "day".
+Forbidden: gtc is no longer permitted for Market Orders, as it increases the risk of broker-side rejection or "Zombie Orders" that stay open across sessions.
+
+## 56. Re-Sync Enforcement on Execution Failure
+Objective: If an execution failure (Point 53) is detected, the bot must ensure the local state hasn't become corrupted by a partial write.
+Logic:
+Upon a canceled or rejected order status, the bot MUST automatically trigger the logic of Point 42 (Strict Mirror Sync) to re-validate exactly what is on the broker's books.
+

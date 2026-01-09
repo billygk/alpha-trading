@@ -27,6 +27,11 @@ It is designed for traders who want the precision of algorithmic execution (trai
 - **Auto-Discovery**: New positions opened manually on the broker are automatically imported and assigned default safety limits.
 - **Cost-Basis Truth**: Uses the broker's `AvgEntryPrice` to ensure P/L calc matches your official dashboard.
 
+### ⚙️ HFT-Grade Execution Reliability
+- **Sequential Clearance**: Automatically cleans up "Zombie Orders" before placing new ones to prevent position locking.
+- **Verification Loop**: Confirms trades are actually `Filled` on the exchange before confirming success, preventing "Ghost Fills".
+- **Re-Sync on Failure**: If an order fails or is rejected, the bot automatically triggers a full state reconciliation.
+
 ---
 
 ## 🚀 Getting Started

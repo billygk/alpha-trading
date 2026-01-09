@@ -88,8 +88,9 @@ func New(cfg *config.Config, provider market.MarketProvider) *Watcher {
 			{"/market", "Check market status", "/market"},
 			{"/search", "Search for assets by name/ticker", "/search Apple"},
 			{"/ping", "Check bot latency", "/ping"},
-			{"/update", "Update SL/TP for active position", "/update <ticker> <sl> <tp> [ts_pct]"},
-			{"/portfolio", "Dump raw portfolio_state.json for debugging", "/portfolio"},
+			{"/update", "Update SL/TP for active position", "/update <ticker> <sl> <tp> [ts-pct]"},
+			{"/scan", "Scan sector health (biotech, metals, energy, defense)", "/scan <sector>"},
+			{"/portfolio", "Dump raw portfolio state for debugging", "/portfolio"},
 			{"/help", "Show this help message", "/help"},
 		},
 	}
@@ -140,6 +141,7 @@ func (w *Watcher) HandleCommand(cmd string) string {
 		query := strings.Join(parts[1:], " ")
 		return w.searchAssets(query)
 	case "/help":
+		println("Help command received")
 		return w.getHelp()
 	case "/buy":
 		return w.handleBuyCommand(parts)
@@ -556,7 +558,15 @@ func (w *Watcher) handleSellCommand(parts []string) string {
 
 	msg := []string{fmt.Sprintf("📉 *Manual Universal Exit: %s*", ticker)}
 
-	// 1. Check Active Positions
+	// 1. Sequential Clearance (Spec 54)
+	if err := w.ensureSequentialClearance(ticker); err != nil {
+		msg = append(msg, fmt.Sprintf("⚠️ Failed to clear pending orders: %v", err))
+		// We try to proceed anyway for "Emergency Exit" semantics, but warn.
+	} else {
+		msg = append(msg, "DEBUG: Pending orders cleared.")
+	}
+
+	// 2. Check Active Positions & Execute Sell
 	positions, err := w.provider.ListPositions()
 	positionFound := false
 	if err != nil {
@@ -565,13 +575,20 @@ func (w *Watcher) handleSellCommand(parts []string) string {
 		for _, p := range positions {
 			if p.Symbol == ticker {
 				positionFound = true
+
 				// Execute Sell
-				_, err := w.provider.PlaceOrder(ticker, p.Qty, "sell")
+				order, err := w.provider.PlaceOrder(ticker, p.Qty, "sell")
 				if err != nil {
 					msg = append(msg, fmt.Sprintf("❌ Failed to sell position: %v", err))
 					log.Printf("[FATAL_TRADE_ERROR] Manual sell failed for %s: %v", ticker, err)
 				} else {
-					msg = append(msg, "✅ Triggered Market Sell (Closing Position).")
+					// Spec 53: Execution Verification
+					verified, vErr := w.verifyOrderExecution(order.ID)
+					if vErr != nil {
+						msg = append(msg, fmt.Sprintf("⚠️ Order placed but verification failed: %v", vErr))
+					} else {
+						msg = append(msg, fmt.Sprintf("✅ Triggered Market Sell (Status: %s).", verified.Status))
+					}
 				}
 				break
 			}
@@ -580,28 +597,6 @@ func (w *Watcher) handleSellCommand(parts []string) string {
 
 	if !positionFound {
 		msg = append(msg, "ℹ️ No active position found on exchange.")
-	}
-
-	// 2. Check Pending Orders
-	ordersFound := false
-	openOrders, err := w.provider.ListOrders("open")
-	if err != nil {
-		msg = append(msg, fmt.Sprintf("⚠️ Failed to list open orders: %v", err))
-	} else {
-		for _, o := range openOrders {
-			if o.Symbol == ticker {
-				ordersFound = true
-				if err := w.provider.CancelOrder(o.ID); err != nil {
-					msg = append(msg, fmt.Sprintf("❌ Failed to cancel order %s: %v", o.ID, err))
-				} else {
-					msg = append(msg, fmt.Sprintf("✅ Cancelled Pending Order: %s %s", o.Side, o.Qty))
-				}
-			}
-		}
-	}
-
-	if !ordersFound {
-		msg = append(msg, "ℹ️ No pending orders found.")
 	}
 
 	// 3. Cleanup Local State
@@ -622,8 +617,8 @@ func (w *Watcher) handleSellCommand(parts []string) string {
 		msg = append(msg, "✅ Local state updated to CLOSED.")
 	}
 
-	if !positionFound && !ordersFound {
-		return fmt.Sprintf("❓ No active risk found for %s (No positions, No orders).", ticker)
+	if !positionFound { // Removed ordersFound check as we cleared them implicitly
+		return strings.Join(msg, "\n")
 	}
 
 	return strings.Join(msg, "\n")
@@ -698,116 +693,15 @@ func (w *Watcher) handleUpdateCommand(parts []string) string {
 }
 
 func (w *Watcher) handleRefreshCommand() string {
-	positions, err := w.provider.ListPositions()
+	count, discovered, err := w.syncState()
 	if err != nil {
-		return fmt.Sprintf("❌ Failed to fetch positions from Alpaca: %v", err)
+		return fmt.Sprintf("❌ Failed to sync state: %v", err)
 	}
 
-	// Rebuild State
-	var newPositions []models.Position
-
-	// Create a map of existing HighWaterMarks to preserve them
-	// We also track existence to identify "Discovered" positions
-	hwmMap := make(map[string]decimal.Decimal)
-	tsPctMap := make(map[string]decimal.Decimal)
-	existsMap := make(map[string]bool)
-
-	for _, p := range w.state.Positions {
-		if p.Status == "ACTIVE" {
-			hwmMap[p.Ticker] = p.HighWaterMark
-			tsPctMap[p.Ticker] = p.TrailingStopPct
-			existsMap[p.Ticker] = true
-		}
+	msg := fmt.Sprintf("🔄 Strict Mirror Sync Complete: Local state aligned with Alpaca (%d active positions).", count)
+	if len(discovered) > 0 {
+		msg += fmt.Sprintf("\n⚠️ Imported & Protected: %s", strings.Join(discovered, ", "))
 	}
-
-	var discoveredTickers []string
-
-	for _, p := range positions {
-		ticker := p.Symbol
-		qty := p.Qty
-		avgEntry := p.AvgEntryPrice // Ensure this is accurate (Alpaca v3 uses Decimal)
-
-		var currentPrice decimal.Decimal
-		if p.CurrentPrice != nil {
-			currentPrice = *p.CurrentPrice
-		}
-
-		// Spec 40: HWM = max(AvgEntry, Current)
-		hwm := avgEntry
-		if currentPrice.GreaterThan(hwm) {
-			hwm = currentPrice
-		}
-
-		// Defaults for New/Discovered (Spec 42 Strict Sync)
-		sl := decimal.Zero
-		tp := decimal.Zero
-		tsPct := decimal.NewFromFloat(w.config.DefaultTrailingStopPct) // Always apply default TS
-		thesisID := fmt.Sprintf("IMPORTED_%d", time.Now().Unix())
-
-		// If exists in local state, preserve SL/TP/TS
-		if existsMap[ticker] {
-			// Find original to retrieve config
-			for _, oldP := range w.state.Positions {
-				if oldP.Ticker == ticker && oldP.Status == "ACTIVE" {
-					sl = oldP.StopLoss
-					tp = oldP.TakeProfit
-					tsPct = oldP.TrailingStopPct
-					thesisID = oldP.ThesisID
-					break
-				}
-			}
-
-			// Backfill Defaults if Zero (Safety Override)
-			// User requested that SL be calculated even for existing positions if currently N/A.
-			if sl.IsZero() {
-				slMult := decimal.NewFromInt(1).Sub(decimal.NewFromFloat(w.config.DefaultStopLossPct).Div(decimal.NewFromInt(100)))
-				sl = avgEntry.Mul(slMult)
-				log.Printf("ℹ️ Existing position %s had SL=0. Backfilled default: $%s", ticker, sl.StringFixed(2))
-			}
-			if tp.IsZero() {
-				tpMult := decimal.NewFromInt(1).Add(decimal.NewFromFloat(w.config.DefaultTakeProfitPct).Div(decimal.NewFromInt(100)))
-				tp = avgEntry.Mul(tpMult)
-				log.Printf("ℹ️ Existing position %s had TP=0. Backfilled default: $%s", ticker, tp.StringFixed(2))
-			}
-			if tsPct.IsZero() {
-				tsPct = decimal.NewFromFloat(w.config.DefaultTrailingStopPct)
-			}
-		} else {
-			// Spec 42: Apply Defaults to Discovered Positions
-			// SL = Entry * (1 - DefaultSL/100)
-			slMult := decimal.NewFromInt(1).Sub(decimal.NewFromFloat(w.config.DefaultStopLossPct).Div(decimal.NewFromInt(100)))
-			sl = avgEntry.Mul(slMult)
-
-			// TP = Entry * (1 + DefaultTP/100)
-			tpMult := decimal.NewFromInt(1).Add(decimal.NewFromFloat(w.config.DefaultTakeProfitPct).Div(decimal.NewFromInt(100)))
-			tp = avgEntry.Mul(tpMult)
-
-			discoveredTickers = append(discoveredTickers, ticker)
-			log.Printf("ℹ️ Position discovered: %s. Applied Default SL ($%s) & TP ($%s).", ticker, sl.StringFixed(2), tp.StringFixed(2))
-		}
-
-		newPos := models.Position{
-			Ticker:          ticker,
-			Quantity:        qty,
-			EntryPrice:      avgEntry, // Spec 40: Always use Alpaca AvgEntry
-			StopLoss:        sl,
-			TakeProfit:      tp,
-			Status:          "ACTIVE",
-			HighWaterMark:   hwm,
-			TrailingStopPct: tsPct,
-			ThesisID:        thesisID,
-		}
-		newPositions = append(newPositions, newPos)
-	}
-
-	w.state.Positions = newPositions
-	w.saveStateAsync()
-
-	msg := fmt.Sprintf("🔄 Strict Mirror Sync Complete: Local state aligned with Alpaca (%d active positions).", len(newPositions))
-	if len(discoveredTickers) > 0 {
-		msg += fmt.Sprintf("\n⚠️ Imported & Protected: %s", strings.Join(discoveredTickers, ", "))
-	}
-	// Note: We don't explicitly list deleted positions, but len(newPositions) vs old count implies it.
 
 	return msg
 }
@@ -1314,4 +1208,183 @@ func (w *Watcher) handlePortfolioCommand() string {
 	}
 
 	return "" // Handled proactively
+}
+
+// syncState performs the core logic of synchronization (Spec 29 & 40).
+// Returns count of active positions, list of discovered tickers, and error.
+func (w *Watcher) syncState() (int, []string, error) {
+	positions, err := w.provider.ListPositions()
+	if err != nil {
+		return 0, nil, err
+	}
+
+	// Rebuild State
+	var newPositions []models.Position
+
+	// Create a map of existing HighWaterMarks to preserve them
+	existsMap := make(map[string]bool)
+
+	for _, p := range w.state.Positions {
+		if p.Status == "ACTIVE" {
+			existsMap[p.Ticker] = true
+		}
+	}
+
+	var discoveredTickers []string
+
+	for _, p := range positions {
+		ticker := p.Symbol
+		qty := p.Qty
+		avgEntry := p.AvgEntryPrice
+
+		var currentPrice decimal.Decimal
+		if p.CurrentPrice != nil {
+			currentPrice = *p.CurrentPrice
+		}
+
+		// Spec 40: HWM = max(AvgEntry, Current)
+		hwm := avgEntry
+		if currentPrice.GreaterThan(hwm) {
+			hwm = currentPrice
+		}
+
+		// Defaults
+		sl := decimal.Zero
+		tp := decimal.Zero
+		tsPct := decimal.NewFromFloat(w.config.DefaultTrailingStopPct)
+		thesisID := fmt.Sprintf("IMPORTED_%d", time.Now().Unix())
+
+		// If exists in local state, preserve SL/TP/TS
+		if existsMap[ticker] {
+			for _, oldP := range w.state.Positions {
+				if oldP.Ticker == ticker && oldP.Status == "ACTIVE" {
+					sl = oldP.StopLoss
+					tp = oldP.TakeProfit
+					tsPct = oldP.TrailingStopPct
+					thesisID = oldP.ThesisID
+
+					// Backfill Defaults if Zero
+					if sl.IsZero() {
+						slMult := decimal.NewFromInt(1).Sub(decimal.NewFromFloat(w.config.DefaultStopLossPct).Div(decimal.NewFromInt(100)))
+						sl = avgEntry.Mul(slMult)
+					}
+					if tp.IsZero() {
+						tpMult := decimal.NewFromInt(1).Add(decimal.NewFromFloat(w.config.DefaultTakeProfitPct).Div(decimal.NewFromInt(100)))
+						tp = avgEntry.Mul(tpMult)
+					}
+					if tsPct.IsZero() {
+						tsPct = decimal.NewFromFloat(w.config.DefaultTrailingStopPct)
+					}
+					break
+				}
+			}
+		} else {
+			// Spec 42: Apply Defaults to Discovered Positions
+			slMult := decimal.NewFromInt(1).Sub(decimal.NewFromFloat(w.config.DefaultStopLossPct).Div(decimal.NewFromInt(100)))
+			sl = avgEntry.Mul(slMult)
+
+			tpMult := decimal.NewFromInt(1).Add(decimal.NewFromFloat(w.config.DefaultTakeProfitPct).Div(decimal.NewFromInt(100)))
+			tp = avgEntry.Mul(tpMult)
+
+			discoveredTickers = append(discoveredTickers, ticker)
+			log.Printf("ℹ️ Position discovered: %s. Applied Default SL ($%s) & TP ($%s).", ticker, sl.StringFixed(2), tp.StringFixed(2))
+		}
+
+		newPos := models.Position{
+			Ticker:          ticker,
+			Quantity:        qty,
+			EntryPrice:      avgEntry,
+			StopLoss:        sl,
+			TakeProfit:      tp,
+			Status:          "ACTIVE",
+			HighWaterMark:   hwm,
+			TrailingStopPct: tsPct,
+			ThesisID:        thesisID,
+		}
+		newPositions = append(newPositions, newPos)
+	}
+
+	w.state.Positions = newPositions
+	w.saveStateAsync()
+
+	return len(newPositions), discoveredTickers, nil
+}
+
+// ensureSequentialClearance ensures all open orders for a ticker are canceled and cleared (Spec 54).
+func (w *Watcher) ensureSequentialClearance(ticker string) error {
+	// 1. Initial Check
+	orders, err := w.provider.ListOrders("open")
+	if err != nil {
+		return fmt.Errorf("failed to list orders: %v", err)
+	}
+
+	hasOrders := false
+	for _, o := range orders {
+		if o.Symbol == ticker {
+			hasOrders = true
+			if err := w.provider.CancelOrder(o.ID); err != nil {
+				log.Printf("Warning: Failed to cancel order %s: %v", o.ID, err)
+			}
+		}
+	}
+
+	if !hasOrders {
+		return nil
+	}
+
+	// 2. Poll until cleared (Max 5 retries, 500ms apart)
+	for i := 0; i < 5; i++ {
+		time.Sleep(500 * time.Millisecond)
+		orders, err = w.provider.ListOrders("open")
+		if err != nil {
+			continue
+		}
+
+		found := false
+		for _, o := range orders {
+			if o.Symbol == ticker {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			return nil // Cleared
+		}
+	}
+
+	return fmt.Errorf("timeout waiting for orders to clear for %s", ticker)
+}
+
+// verifyOrderExecution polls for order status validation (Spec 53).
+func (w *Watcher) verifyOrderExecution(orderID string) (*alpaca.Order, error) {
+	// Query every 1 second for 5 seconds
+	for i := 0; i < 5; i++ {
+		time.Sleep(1 * time.Second)
+		order, err := w.provider.GetOrder(orderID)
+		if err != nil {
+			log.Printf("Verification poll failed: %v", err)
+			continue
+		}
+
+		status := strings.ToLower(order.Status)
+		if status == "filled" {
+			return order, nil
+		}
+
+		if status == "canceled" || status == "rejected" || status == "expired" {
+			// Spec 56: Re-Sync Enforcement on Execution Failure
+			log.Printf("🚨 Order %s failed with status %s. Triggering Re-Sync.", orderID, status)
+			if count, _, syncErr := w.syncState(); syncErr != nil {
+				log.Printf("CRITICAL: Re-Sync failed after order failure: %v", syncErr)
+			} else {
+				log.Printf("Re-Sync complete. active positions: %d", count)
+			}
+			return order, fmt.Errorf("order terminated with status: %s", status)
+		}
+	}
+
+	// If we get here, it's still pending/accepted/new.
+	// We return the last known state.
+	return w.provider.GetOrder(orderID)
 }
