@@ -1,0 +1,155 @@
+package watcher
+
+import (
+	"fmt"
+	"log"
+	"strings"
+	"time"
+
+	"alpha_trading/internal/models"
+	"alpha_trading/internal/storage"
+
+	"github.com/shopspring/decimal"
+)
+
+// saveStateAsync saves without blocking, or just call storage?
+// For simplicity and safety, we just call storage.SaveState since it's fast enough on low volume.
+func (w *Watcher) saveStateAsync() {
+	// Note: We are already under lock in handleStreamUpdate,
+	// so reading w.state is safe, but SaveState reads it too?
+	// Storage.SaveState takes a copy of the struct by value, so it is safe.
+	// However, IO operations inside a lock are generally bad.
+	// But given the simplicity and low freq of triggers, it's acceptable for now.
+	// Optimally: send to a channel.
+	storage.SaveState(w.state)
+}
+
+func (w *Watcher) searchAssets(query string) string {
+	assets, err := w.provider.SearchAssets(query)
+	if err != nil {
+		log.Printf("Error searching assets: %v", err)
+		return "⚠️ Error: Could not search assets."
+	}
+
+	if len(assets) == 0 {
+		return fmt.Sprintf("🔍 No results found for '%s'.", query)
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("🔍 *Results for '%s'*\n", query))
+	for _, asset := range assets {
+		sb.WriteString(fmt.Sprintf("- *%s*: %s\n", asset.Symbol, asset.Name))
+	}
+	return sb.String()
+}
+
+func (w *Watcher) getPrice(ticker string) string {
+	price, err := w.provider.GetPrice(ticker)
+
+	if err != nil || price.IsZero() {
+		log.Printf("Price lookup failed for %s (err: %v, price: %v). Falling back to search.", ticker, err, price)
+		searchResult := w.searchAssets(ticker)
+		return fmt.Sprintf("⚠️ Price not found for '%s'. Did you mean:\n\n%s", ticker, searchResult)
+	}
+	return fmt.Sprintf("💲 *%s*: $%s", ticker, price.StringFixed(2))
+}
+
+// syncState performs the core logic of synchronization (Spec 29 & 40).
+// Returns count of active positions, list of discovered tickers, and error.
+func (w *Watcher) syncState() (int, []string, error) {
+	positions, err := w.provider.ListPositions()
+	if err != nil {
+		return 0, nil, err
+	}
+
+	// Rebuild State
+	var newPositions []models.Position
+
+	// Create a map of existing HighWaterMarks to preserve them
+	existsMap := make(map[string]bool)
+
+	for _, p := range w.state.Positions {
+		if p.Status == "ACTIVE" {
+			existsMap[p.Ticker] = true
+		}
+	}
+
+	var discoveredTickers []string
+
+	for _, p := range positions {
+		ticker := p.Symbol
+		qty := p.Qty
+		avgEntry := p.AvgEntryPrice
+
+		var currentPrice decimal.Decimal
+		if p.CurrentPrice != nil {
+			currentPrice = *p.CurrentPrice
+		}
+
+		// Spec 40: HWM = max(AvgEntry, Current)
+		hwm := avgEntry
+		if currentPrice.GreaterThan(hwm) {
+			hwm = currentPrice
+		}
+
+		// Defaults
+		sl := decimal.Zero
+		tp := decimal.Zero
+		tsPct := decimal.NewFromFloat(w.config.DefaultTrailingStopPct)
+		thesisID := fmt.Sprintf("IMPORTED_%d", time.Now().Unix())
+
+		// If exists in local state, preserve SL/TP/TS
+		if existsMap[ticker] {
+			for _, oldP := range w.state.Positions {
+				if oldP.Ticker == ticker && oldP.Status == "ACTIVE" {
+					sl = oldP.StopLoss
+					tp = oldP.TakeProfit
+					tsPct = oldP.TrailingStopPct
+					thesisID = oldP.ThesisID
+
+					// Backfill Defaults if Zero
+					if sl.IsZero() {
+						slMult := decimal.NewFromInt(1).Sub(decimal.NewFromFloat(w.config.DefaultStopLossPct).Div(decimal.NewFromInt(100)))
+						sl = avgEntry.Mul(slMult)
+					}
+					if tp.IsZero() {
+						tpMult := decimal.NewFromInt(1).Add(decimal.NewFromFloat(w.config.DefaultTakeProfitPct).Div(decimal.NewFromInt(100)))
+						tp = avgEntry.Mul(tpMult)
+					}
+					if tsPct.IsZero() {
+						tsPct = decimal.NewFromFloat(w.config.DefaultTrailingStopPct)
+					}
+					break
+				}
+			}
+		} else {
+			// Spec 42: Apply Defaults to Discovered Positions
+			slMult := decimal.NewFromInt(1).Sub(decimal.NewFromFloat(w.config.DefaultStopLossPct).Div(decimal.NewFromInt(100)))
+			sl = avgEntry.Mul(slMult)
+
+			tpMult := decimal.NewFromInt(1).Add(decimal.NewFromFloat(w.config.DefaultTakeProfitPct).Div(decimal.NewFromInt(100)))
+			tp = avgEntry.Mul(tpMult)
+
+			discoveredTickers = append(discoveredTickers, ticker)
+			log.Printf("ℹ️ Position discovered: %s. Applied Default SL ($%s) & TP ($%s).", ticker, sl.StringFixed(2), tp.StringFixed(2))
+		}
+
+		newPos := models.Position{
+			Ticker:          ticker,
+			Quantity:        qty,
+			EntryPrice:      avgEntry,
+			StopLoss:        sl,
+			TakeProfit:      tp,
+			Status:          "ACTIVE",
+			HighWaterMark:   hwm,
+			TrailingStopPct: tsPct,
+			ThesisID:        thesisID,
+		}
+		newPositions = append(newPositions, newPos)
+	}
+
+	w.state.Positions = newPositions
+	w.saveStateAsync()
+
+	return len(newPositions), discoveredTickers, nil
+}
