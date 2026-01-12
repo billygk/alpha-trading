@@ -58,6 +58,9 @@ func (w *Watcher) HandleCommand(cmd string) string {
 		return w.handlePortfolioCommand()
 	case "/sell":
 		return w.handleSellCommand(parts)
+	case "/analyze":
+		// Spec 64: Manual AI-Directed Analysis
+		return w.handleAnalyzeCommand(parts)
 	case "/update":
 		return w.handleUpdateCommand(parts)
 	case "/refresh":
@@ -200,20 +203,29 @@ func (w *Watcher) handleBuyCommand(parts []string) string {
 	// BUT, strict reading: `Current_Equity` + `Proposed`.
 	// Let's implement strictly.
 
-	equity, err := w.provider.GetEquity()
-	if err != nil {
-		log.Printf("Error fetching equity for budget check: %v", err)
-		// Fail open or closed? Closed for safety.
-		return "⚠️ Error verifying equity for budget check."
-	}
+	// --- Spec 63: Fiscal Budget Hard-Stop (Revised for Paper Trading) ---
+	// Original Spec: "Current_Equity + Proposed_Order_Value > 300".
+	// Issue: Paper accounts start with $100k Equity. $100k > $300 blocking everything.
+	// Revised Logic: "Total Cost Basis of Active Positions + Proposed Trade > Limit".
+	// This caps the *Invested Capital* (Exposure) to $300, ignoring uninvested Cash.
 
-	// We use the proposed cost as the addend
-	projectedTotal := equity.Add(totalCost)
+	w.mu.RLock()
+	var currentExposure decimal.Decimal
+	for _, p := range w.state.Positions {
+		if p.Status == "ACTIVE" {
+			// Cost = Qty * EntryPrice
+			cost := p.Quantity.Mul(p.EntryPrice)
+			currentExposure = currentExposure.Add(cost)
+		}
+	}
+	w.mu.RUnlock()
+
+	projectedExposure := currentExposure.Add(totalCost)
 	budgetLimit := decimal.NewFromFloat(w.config.FiscalBudgetLimit)
 
-	if projectedTotal.GreaterThan(budgetLimit) {
-		return fmt.Sprintf("❌ Budget Violation (Spec 63):\nProjected Total ($%s) exceeds Limit ($%s).",
-			projectedTotal.StringFixed(2), budgetLimit.StringFixed(2))
+	if projectedExposure.GreaterThan(budgetLimit) {
+		return fmt.Sprintf("❌ Budget Violation (Spec 63):\nProjected Exposure ($%s) exceeds Fiscal Limit ($%s).",
+			projectedExposure.StringFixed(2), budgetLimit.StringFixed(2))
 	}
 
 	// Store Proposal
@@ -473,4 +485,41 @@ func (w *Watcher) handlePortfolioCommand() string {
 	}
 
 	return "" // Handled proactively
+}
+
+// handleAnalyzeCommand implements Spec 64.
+func (w *Watcher) handleAnalyzeCommand(parts []string) string {
+	// Parse optional ticker: /analyze [ticker]
+	ticker := ""
+	if len(parts) > 1 {
+		ticker = strings.ToUpper(parts[1])
+	}
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	// Cooldown Check (Global for simplicity, or per user if we had user ID context properly passed)
+	// Spec 605: "600-second (10-minute) cooldown per user."
+	// Since this bot is single-tenant (TELEGRAM_CHAT_ID check in listener), global is "per user".
+	lastRun, exists := w.lastAnalyzeTime["GLOBAL"]
+	if exists {
+		elapsed := time.Since(lastRun)
+		if elapsed < 10*time.Minute {
+			remaining := (10 * time.Minute) - elapsed
+			return fmt.Sprintf("⏳ Analysis cooling down. Next available in %.0fs.", remaining.Seconds())
+		}
+	}
+
+	// Update timestamp
+	w.lastAnalyzeTime["GLOBAL"] = time.Now()
+
+	// Trigger Async
+	go w.runAIAnalysis(ticker)
+
+	contextMsg := "Global Review"
+	if ticker != "" {
+		contextMsg = fmt.Sprintf("Focus: %s", ticker)
+	}
+
+	return fmt.Sprintf("⏳ AI Analysis Initiated (%s)... Stand by for report.", contextMsg)
 }

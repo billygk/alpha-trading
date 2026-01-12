@@ -17,8 +17,13 @@ type Client struct {
 
 func NewClient() *Client {
 	apiKey := os.Getenv("GEMINI_API_KEY")
-	// default enpoint for Gemini 1.5 Flash (example)
-	url := "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+	model := os.Getenv("GEMINI_MODEL")
+	if model == "" {
+		model = "gemini-2.5-flash" // Sensible default
+	}
+
+	// Dynamic endpoint construction
+	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent", model)
 
 	if apiKey == "" {
 		log.Println("WARNING: GEMINI_API_KEY not found. AI features will be disabled/mocked.")

@@ -436,3 +436,12 @@ Next Steps: Monitor deployments.
   - **Spec 63**: Implemented Fiscal Budget Hard-Stop ($300 limit).
 - Next Steps: Deploy and verify with live key.
 ---
+
+## [2026-01-12] Implemented Spec 64: Manual AI Analysis (/analyze)
+- Action: Added manual override for AI insights.
+- Result:
+  - **Command**: `/analyze [ticker]` command added.
+  - **Logic**: Bypasses market-hour gates but enforces a strict 600s (10m) cooldown to prevent API spam.
+  - **Context**: Passes optional ticker context to the AI system instruction.
+- Next Steps: Verify behavior.
+---

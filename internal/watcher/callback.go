@@ -22,6 +22,11 @@ func (w *Watcher) HandleCallback(callbackID, data string) string {
 		return w.handleBuyCallback(data)
 	}
 
+	// Special Case for AI flow (Spec 64)
+	if strings.HasPrefix(data, "AI_") {
+		return w.handleAICallback(data)
+	}
+
 	action := parts[0]  // CONFIRM or CANCEL
 	trigger := parts[1] // SL, TP, TS
 	ticker := parts[2]
@@ -262,4 +267,48 @@ func (w *Watcher) handleBuyCallback(data string) string {
 	}
 
 	return "Unknown buy action."
+}
+
+// handleAICallback processes AI_EXEC_ and AI_DISMISS_ buttons.
+func (w *Watcher) handleAICallback(data string) string {
+	// Format: AI_EXEC_AI_<Nano>_<Ticker> or AI_DISMISS_...
+	// We need to extract the ActionID: AI_<Nano>_<Ticker>
+	// Prefix is 8 chars "AI_EXEC_" or 11 chars "AI_DISMISS_"
+
+	var actionID string
+	var isExec bool
+
+	if strings.HasPrefix(data, "AI_EXEC_") {
+		actionID = strings.TrimPrefix(data, "AI_EXEC_")
+		isExec = true
+	} else if strings.HasPrefix(data, "AI_DISMISS_") {
+		actionID = strings.TrimPrefix(data, "AI_DISMISS_")
+		isExec = false
+	} else {
+		return "⚠️ Invalid AI callback format."
+	}
+
+	w.mu.Lock()
+	pending, exists := w.pendingActions[actionID]
+	if !exists {
+		w.mu.Unlock()
+		return "⚠️ AI Action expired or already processed."
+	}
+	delete(w.pendingActions, actionID) // Cleanup
+	w.mu.Unlock()
+
+	if !isExec {
+		return fmt.Sprintf("❌ AI Proposal for %s dismissed.", pending.Ticker)
+	}
+
+	// EXECUTE
+	// The pending.Action field holds the command string, e.g., "/update XBI 121.399 133.034 95"
+	cmd := pending.Action
+	log.Printf("Executing AI Command: %s", cmd)
+
+	// Recursively execute the stored command
+	// HandleCommand handles its own locking if needed.
+	result := w.HandleCommand(cmd)
+
+	return fmt.Sprintf("🤖⚡ **AI EXECUTION**\nCommand: `%s`\nResult: %s", cmd, result)
 }

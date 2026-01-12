@@ -306,11 +306,14 @@ func (w *Watcher) handleAIResult(analysis *ai.AIAnalysis, snapshot *ai.Portfolio
 
 		// Implementation: Store the command payload mapped to a unique ID.
 		actionID := fmt.Sprintf("AI_%d_%s", time.Now().UnixNano(), ticker)
+
+		w.mu.Lock()
 		w.pendingActions[actionID] = PendingAction{
 			Ticker:    ticker,
 			Action:    analysis.ActionCommand, // Hijacking Action field to store command
 			Timestamp: time.Now(),
 		}
+		w.mu.Unlock()
 
 		buttons := []telegram.Button{
 			{Text: "✅ EXECUTE AI", CallbackData: fmt.Sprintf("AI_EXEC_%s", actionID)},
@@ -374,11 +377,14 @@ func (w *Watcher) handleAIResult(analysis *ai.AIAnalysis, snapshot *ai.Portfolio
 				// Downgrade to Manual
 				msg += fmt.Sprintf("\n\n⚠️ Auto-Update Blocked: %s. Manual Confirmation Required.", reason)
 				actionID := fmt.Sprintf("AI_%d_%s", time.Now().UnixNano(), ticker)
+
+				w.mu.Lock()
 				w.pendingActions[actionID] = PendingAction{
 					Ticker:    ticker,
 					Action:    analysis.ActionCommand,
 					Timestamp: time.Now(),
 				}
+				w.mu.Unlock()
 				buttons := []telegram.Button{
 					{Text: "✅ EXECUTE", CallbackData: fmt.Sprintf("AI_EXEC_%s", actionID)},
 					{Text: "❌ DISMISS", CallbackData: fmt.Sprintf("AI_DISMISS_%s", actionID)},

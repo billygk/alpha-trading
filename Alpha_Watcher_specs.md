@@ -593,3 +593,15 @@ Critique: {{analysis}}
 Objective: Enforce the $300 limit at the execution level.
 Logic: Before executing any /buy (manual or AI), the bot MUST calculate: Current_Equity + Proposed_Order_Value. If total > $300, the order is blocked with the message: "❌ Budget Violation: Proposed trade exceeds $300 limit."
 
+## 64. Manual AI-Directed Analysis (/analyze)
+Objective: Provide a way to force an immediate "Portfolio Review" without waiting for the next WATCHER_POLL_INTERVAL.
+Logic:
+Trigger: Telegram command /analyze or /analyze <ticker>.
+Execution:
+Step 1: Bypass the "Temporal Gate" of Point 58 (allow execution even if the market is closed or it's not pre-market).
+Step 2: Fetch the latest quotes for all active assets.
+Step 3: Invoke the Gemini 2.5 Flash logic defined in Point 58/59.
+Response: The bot MUST reply with the full Tier 1 Intelligence Report (Point 62) regardless of the confidence score.
+Guardrail: To prevent "API Spamming" and excessive costs, the /analyze command MUST have a 600-second (10-minute) cooldown per user. If triggered during cooldown, the bot replies: "⏳ Analysis cooling down. Next available in {{remaining_seconds}}s."
+Contextual Scope: If a ticker is provided (e.g., /analyze XBI), the AI prompt should be modified to focus specifically on that ticker's recent price action and sector news.
+

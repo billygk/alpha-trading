@@ -1,6 +1,7 @@
 package watcher
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"sync"
@@ -31,6 +32,7 @@ type Watcher struct {
 	pendingActions   map[string]PendingAction
 	pendingProposals map[string]PendingProposal
 	lastAlerts       map[string]time.Time // To prevent alert fatigue (Spec 38)
+	lastAnalyzeTime  map[string]time.Time // To prevent API spam (Spec 64)
 	wasMarketOpen    bool                 // For EOD trigger (Spec 49)
 	config           *config.Config
 }
@@ -48,6 +50,7 @@ func New(cfg *config.Config, provider market.MarketProvider) *Watcher {
 		pendingActions:   make(map[string]PendingAction),
 		pendingProposals: make(map[string]PendingProposal),
 		lastAlerts:       make(map[string]time.Time),
+		lastAnalyzeTime:  make(map[string]time.Time),
 		config:           cfg,
 		wasMarketOpen:    false, // Default to false, will sync on first poll
 		commands: []CommandDoc{
@@ -62,6 +65,7 @@ func New(cfg *config.Config, provider market.MarketProvider) *Watcher {
 			{"/ping", "Check bot latency", "/ping"},
 			{"/update", "Update SL/TP for active position", "/update <ticker> <sl> <tp> [ts-pct]"},
 			{"/scan", "Scan sector health (biotech, metals, energy, defense)", "/scan <sector>"},
+			{"/analyze", "Request AI portfolio analysis (10m cooldown)", "/analyze [ticker]"},
 			{"/portfolio", "Dump raw portfolio state for debugging", "/portfolio"},
 			{"/help", "Show this help message", "/help"},
 		},
@@ -175,19 +179,19 @@ func (w *Watcher) Poll() {
 
 		if runAI {
 			// Run AI Analysis Async
-			go w.runAIAnalysis()
+			go w.runAIAnalysis("")
 		}
 	}
 }
 
-func (w *Watcher) runAIAnalysis() {
-	// Spec 58: AI Analysis Loop
+func (w *Watcher) runAIAnalysis(ticker string) {
+	// Spec 58 & 64: AI Analysis Loop
 	if w.config.GeminiAPIKey == "" {
 		return
 	}
 
 	// 1. Gather Data (Snapshot)
-	snapshot, err := w.buildPortfolioSnapshot()
+	snapshot, err := w.buildPortfolioSnapshot(ticker)
 	if err != nil {
 		log.Printf("AI Error: Failed to build snapshot: %v", err)
 		return
@@ -208,7 +212,13 @@ func (w *Watcher) runAIAnalysis() {
 		return
 	}
 
-	analysis, err := aiClient.AnalyzePortfolio(string(sysInstr), *snapshot)
+	// Enhance Prompt Context if ticker provided (Spec 64)
+	contextMsg := ""
+	if ticker != "" {
+		contextMsg = fmt.Sprintf("\nFOCUS_CONTEXT: The user requested a specific analysis for %s. Please prioritize this asset in your review.", ticker)
+	}
+
+	analysis, err := aiClient.AnalyzePortfolio(string(sysInstr)+contextMsg, *snapshot)
 	if err != nil {
 		log.Printf("AI Error: API failure: %v", err)
 		return
@@ -218,7 +228,7 @@ func (w *Watcher) runAIAnalysis() {
 	w.handleAIResult(analysis, snapshot)
 }
 
-func (w *Watcher) buildPortfolioSnapshot() (*ai.PortfolioSnapshot, error) {
+func (w *Watcher) buildPortfolioSnapshot(ticker string) (*ai.PortfolioSnapshot, error) {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
 
@@ -237,12 +247,17 @@ func (w *Watcher) buildPortfolioSnapshot() (*ai.PortfolioSnapshot, error) {
 		status = "OPEN"
 	}
 
+	marketContext := "Sector Scan: N/A"
+	if ticker != "" {
+		marketContext = fmt.Sprintf("Analysis Focus: %s", ticker)
+	}
+
 	return &ai.PortfolioSnapshot{
 		Timestamp:     time.Now().Format(time.RFC3339),
 		MarketStatus:  status,
 		Capital:       bp,
 		Equity:        equity,
 		Positions:     w.state.Positions,
-		MarketContext: "Sector Scan: N/A", // Placeholder
+		MarketContext: marketContext,
 	}, nil
 }

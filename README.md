@@ -106,6 +106,7 @@ It is designed for traders who want the precision of algorithmic execution (trai
 | `DEFAULT_TAKE_PROFIT_PCT` | `15.0` | Default TP % applied to new or simplified orders. |
 | `DEFAULT_TRAILING_STOP_PCT` | `3.0` | Default Trailing Stop % applied to new or simplified orders. |
 | `AUTO_STATUS_ENABLED` | `false` | If `true`, pushes the `/status` dashboard after every poll (during market hours). |
+| `GEMINI_MODEL` | `gemini-1.5-flash` | The Gemini model version to use for AI analysis (e.g. `gemini-2.5-pro`). |
 
 ---
 
@@ -143,6 +144,12 @@ Manually update the risk parameters for an active position.
 
 ### `/scan <sector>`
 (Experimental) Checks sector health/sentiment.
+
+### `/analyze [ticker]`
+(Spec 64) Manually trigger an AI Portfolio Review.
+- **Cool-down**: 10 minutes between calls.
+- **Context**: Optional [ticker] focuses the AI's analysis on a specific asset.
+- **Bypass**: Runs even if market is closed (Temporal Gate Override).
 
 ### `/portfolio`
 Dump the raw `portfolio_state.json` file for debugging purposes.
