@@ -247,12 +247,15 @@ func (w *Watcher) verifyOrderExecution(orderID string) (*alpaca.Order, error) {
 }
 
 // handleAIResult processes the AI analysis (Spec 60, 61, 62).
-func (w *Watcher) handleAIResult(analysis *ai.AIAnalysis, snapshot *ai.PortfolioSnapshot) {
+func (w *Watcher) handleAIResult(analysis *ai.AIAnalysis, snapshot *ai.PortfolioSnapshot, isManual bool) {
 	log.Printf("🤖 AI Analysis: Recommends %s (Confidence: %.2f)", analysis.Recommendation, analysis.ConfidenceScore)
 
 	// Tier 3: Low Priority (Log only)
 	if analysis.ConfidenceScore < 0.70 { // Spec 59 Guardrail
 		log.Printf("AI Recommendation Ignored due to low confidence (%.2f < 0.70).", analysis.ConfidenceScore)
+		if isManual {
+			telegram.Notify(fmt.Sprintf("🤖 AI Analysis: Recommends %s (Confidence: %.2f)\n⚠️ Recommendation Ignored due to low confidence (%.2f < 0.70).", analysis.Recommendation, analysis.ConfidenceScore, analysis.ConfidenceScore))
+		}
 		return
 	}
 
@@ -272,6 +275,9 @@ func (w *Watcher) handleAIResult(analysis *ai.AIAnalysis, snapshot *ai.Portfolio
 		// "Tier 3: Low Priority ... (LOG ONLY)".
 		// Let's just log HOLDs with high confidence for now to avoid spam, unless user wants debug.
 		log.Printf("AI STRATEGY: HOLD %s. Critique: %s", ticker, analysis.Analysis)
+		if isManual {
+			telegram.Notify(fmt.Sprintf("🤖 AI Analysis: Recommends HOLD (Confidence: %.2f)\nCritique: %s", analysis.ConfidenceScore, analysis.Analysis))
+		}
 		return
 	}
 

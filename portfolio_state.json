@@ -1,18 +1,6 @@
 {
   "version": "1.3",
-  "last_sync": "2026-01-12T19:45:12+01:00",
-  "last_heartbeat": "2026-01-12T19:45:11+01:00",
-  "positions": [
-    {
-      "ticker": "XBI",
-      "quantity": "1",
-      "entry_price": "122.57",
-      "stop_loss": "116.4985",
-      "take_profit": "134.893",
-      "status": "ACTIVE",
-      "thesis_id": "MANUAL_1768243540",
-      "high_water_mark": "122.57",
-      "trailing_stop_pct": "3"
-    }
-  ]
+  "last_sync": "2026-01-12T22:04:52+01:00",
+  "last_heartbeat": "2026-01-12T22:04:52+01:00",
+  "positions": null
 }

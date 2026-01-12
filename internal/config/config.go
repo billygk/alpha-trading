@@ -45,6 +45,7 @@ func Load() *Config {
 		"APCA_API_BASE_URL":   true,
 		"TELEGRAM_BOT_TOKEN":  true,
 		"TELEGRAM_CHAT_ID":    true,
+		"GEMINI_API_KEY":      true,
 	}
 
 	var missing []string

@@ -445,3 +445,28 @@ Next Steps: Monitor deployments.
   - **Context**: Passes optional ticker context to the AI system instruction.
 - Next Steps: Verify behavior.
 ---
+
+## [2026-01-12] Enhanced AI Analysis Feedback
+- Action: Improved transparency for `/analyze` command.
+- Result:
+  - **Enhancement**: Manual analysis requests now report "HOLD" and "Low Confidence" results directly to Telegram instead of just logging them.
+  - **Reasoning**: Provides user with immediate feedback on why an analysis didn't result in a trade proposal.
+- Next Steps: Verify behavior.
+---
+
+## [2026-01-12] Fixed AI Budget Awareness
+- Action: Updated AI Context and System Instruction.
+- Result:
+  - **Context**: `PortfolioSnapshot` now includes `fiscal_limit` derived from config.
+  - **Instruction**: `portfolio_review_update.md` explicitly defines "Budget Control" using `fiscal_limit - current_exposure`.
+- Next Steps: Verify AI respects the limit.
+---
+
+## [2026-01-12] Implemented AI Error Notification
+- Action: Enhanced Error Handling for `/analyze` command.
+- Result:
+  - **Parsing**: `ai/client.go` now parses JSON error bodies (e.g., 429 Quota Exceeded) into readable text.
+  - **Feedback**: `watcher.go` sends these errors to Telegram immediately. 
+  - **Stability**: Added Markdown Sanitization (Code Blocks) to prevent Telegram API 400 errors on special characters.
+- Next Steps: Verified.
+---

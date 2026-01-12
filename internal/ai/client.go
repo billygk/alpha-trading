@@ -84,6 +84,17 @@ func (c *Client) AnalyzePortfolio(systemInstruction string, snapshot PortfolioSn
 
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
+		// Try to parse clean error message
+		var errResp struct {
+			Error struct {
+				Code    int    `json:"code"`
+				Message string `json:"message"`
+				Status  string `json:"status"`
+			} `json:"error"`
+		}
+		if jsonErr := json.Unmarshal(body, &errResp); jsonErr == nil && errResp.Error.Message != "" {
+			return nil, fmt.Errorf("AI Error %d (%s): %s", resp.StatusCode, errResp.Error.Status, errResp.Error.Message)
+		}
 		return nil, fmt.Errorf("AI API error %d: %s", resp.StatusCode, string(body))
 	}
 

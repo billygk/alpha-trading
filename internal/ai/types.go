@@ -17,6 +17,7 @@ type PortfolioSnapshot struct {
 	MarketStatus  string          `json:"market_status"`
 	Capital       decimal.Decimal `json:"capital_available"` // Buying Power
 	Equity        decimal.Decimal `json:"equity"`
+	FiscalLimit   decimal.Decimal `json:"fiscal_limit"`   // Spec 63 Hard Limit
 	Positions     interface{}     `json:"positions"`      // Raw list from state
 	MarketContext string          `json:"market_context"` // E.g., global trend or sector info if available
 }

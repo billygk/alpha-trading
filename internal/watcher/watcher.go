@@ -13,6 +13,8 @@ import (
 	"alpha_trading/internal/models"
 	"alpha_trading/internal/storage"
 	"alpha_trading/internal/telegram"
+
+	"github.com/shopspring/decimal"
 )
 
 var startTime = time.Now()
@@ -179,12 +181,12 @@ func (w *Watcher) Poll() {
 
 		if runAI {
 			// Run AI Analysis Async
-			go w.runAIAnalysis("")
+			go w.runAIAnalysis("", false)
 		}
 	}
 }
 
-func (w *Watcher) runAIAnalysis(ticker string) {
+func (w *Watcher) runAIAnalysis(ticker string, isManual bool) {
 	// Spec 58 & 64: AI Analysis Loop
 	if w.config.GeminiAPIKey == "" {
 		return
@@ -221,11 +223,13 @@ func (w *Watcher) runAIAnalysis(ticker string) {
 	analysis, err := aiClient.AnalyzePortfolio(string(sysInstr)+contextMsg, *snapshot)
 	if err != nil {
 		log.Printf("AI Error: API failure: %v", err)
+		// Always notify on API failure (e.g. Quota Exceeded) so user knows why AI is silent
+		telegram.Notify(fmt.Sprintf("⚠️ AI Analysis Failed:\n```\n%v\n```", err))
 		return
 	}
 
 	// 3. Process Result (Spec 59, 60, 61, 62)
-	w.handleAIResult(analysis, snapshot)
+	w.handleAIResult(analysis, snapshot, isManual)
 }
 
 func (w *Watcher) buildPortfolioSnapshot(ticker string) (*ai.PortfolioSnapshot, error) {
@@ -257,6 +261,7 @@ func (w *Watcher) buildPortfolioSnapshot(ticker string) (*ai.PortfolioSnapshot, 
 		MarketStatus:  status,
 		Capital:       bp,
 		Equity:        equity,
+		FiscalLimit:   decimal.NewFromFloat(w.config.FiscalBudgetLimit),
 		Positions:     w.state.Positions,
 		MarketContext: marketContext,
 	}, nil

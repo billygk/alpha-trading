@@ -514,7 +514,7 @@ func (w *Watcher) handleAnalyzeCommand(parts []string) string {
 	w.lastAnalyzeTime["GLOBAL"] = time.Now()
 
 	// Trigger Async
-	go w.runAIAnalysis(ticker)
+	go w.runAIAnalysis(ticker, true)
 
 	contextMsg := "Global Review"
 	if ticker != "" {
