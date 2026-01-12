@@ -18,6 +18,11 @@ You will receive a JSON payload containing:
 3.  **Cut Losers**: If an asset is near SL and showing weakness, recommend HOLD (let the hard SL hit) or SELL if fundamental thesis is broken.
 4.  **Budget**: Respect average position size. Do not recommend BUY if it violates diversification.
 
+# Extra:
+1. If we have budget, we should also look for new opportunities to buy. Focus on sector health, biotech, metals, energy, defense. We use alpaca as broker. 
+2. If we have no budget, we should focus on profit-taking and risk management.
+
+
 # Output Schema (JSON)
 You must ALWAYS return this valid JSON structure:
 
