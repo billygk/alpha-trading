@@ -1,6 +1,7 @@
 package watcher
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -256,6 +257,36 @@ func (w *Watcher) handleSellCommand(parts []string) string {
 						msg = append(msg, fmt.Sprintf("⚠️ Order placed but verification failed: %v", vErr))
 					} else {
 						msg = append(msg, fmt.Sprintf("✅ Triggered Market Sell (Status: %s).", verified.Status))
+
+						// --- Spec 57: State Purity Enforcement (Archive & Delete) ---
+						w.mu.Lock()
+						// Find and capture position data for archive
+						var positionData string
+						deleteIndex := -1
+						for i, pos := range w.state.Positions {
+							if pos.Ticker == ticker && pos.Status == "ACTIVE" {
+								// Capture as JSON for audit
+								// We use a simplified struct or just marshal what we have
+								// Spec says "Extract the full position object"
+								b, _ := json.Marshal(pos)
+								positionData = string(b)
+								deleteIndex = i
+								break
+							}
+						}
+
+						// Archive to log
+						if positionData != "" {
+							w.saveDailyPerformance(fmt.Sprintf("ARCHIVED_POSITION: %s", positionData))
+						}
+
+						// Delete from state
+						if deleteIndex != -1 {
+							w.state.Positions = append(w.state.Positions[:deleteIndex], w.state.Positions[deleteIndex+1:]...)
+							msg = append(msg, "✅ Local state purged (Spec 57).")
+						}
+						w.mu.Unlock()
+						w.saveStateAsync()
 					}
 				}
 				break
@@ -267,27 +298,11 @@ func (w *Watcher) handleSellCommand(parts []string) string {
 		msg = append(msg, "ℹ️ No active position found on exchange.")
 	}
 
-	// 3. Cleanup Local State
-	// Mark local state as CLOSED for this ticker regardless of exchange state if requested?
-	// Spec says: "Upon confirmation of fill/cancellation, update portfolio_state.json to reflect Status: CLOSED."
-	// Since we fired Market Sell, we can assume it will close. Better to be safe and mask it.
-
-	updated := false
-	for i := range w.state.Positions {
-		if w.state.Positions[i].Ticker == ticker && w.state.Positions[i].Status == "ACTIVE" {
-			w.state.Positions[i].Status = "CLOSED"
-			updated = true
-		}
-	}
-
-	if updated {
-		w.saveStateAsync()
-		msg = append(msg, "✅ Local state updated to CLOSED.")
-	}
-
-	if !positionFound { // Removed ordersFound check as we cleared them implicitly
-		return strings.Join(msg, "\n")
-	}
+	// 3. Cleanup Local State (Redundant safety check moved to Sync/Refresh)
+	// But if we didn't find it on exchange but have it locally?
+	// The prompt implies "When a /sell command results in a filled status"
+	// If it's not on exchange, we can't sell it.
+	// We rely on /refresh to clean up "ghost" local positions.
 
 	return strings.Join(msg, "\n")
 }

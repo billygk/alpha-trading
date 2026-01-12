@@ -105,7 +105,7 @@ Proposes a new long position.
 - **Response**: A card with calculated totals and risk metrics. Click **✅ EXECUTE** to place the Market Order.
 
 ### `/sell <ticker>`
-**Emergency Exit**. Instantly attempts to close the position at Market Price and cancel any pending open orders for that ticker.
+**Universal Exit**. Liquidates position, cancels pending orders, and **purges** local state (Spec 57). Archives deleted position to `daily_performance.log`.
 
 ### `/refresh`
 Force-syncs local state with Alpaca.

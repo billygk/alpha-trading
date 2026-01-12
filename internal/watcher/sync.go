@@ -134,6 +134,11 @@ func (w *Watcher) syncState() (int, []string, error) {
 			log.Printf("ℹ️ Position discovered: %s. Applied Default SL ($%s) & TP ($%s).", ticker, sl.StringFixed(2), tp.StringFixed(2))
 		}
 
+		// Spec 57: State Purity Enforcement (Implicit)
+		// By rebuilding newPositions purely from the Alpaca list, any local position
+		// that is NOT in the Alpaca response (e.g., closed/sold externally) is automatically dropped.
+		// This satisfies the "Reconciliation Safeguard" requirement.
+
 		newPos := models.Position{
 			Ticker:          ticker,
 			Quantity:        qty,
