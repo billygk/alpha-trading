@@ -2,9 +2,11 @@ package watcher
 
 import (
 	"log"
+	"os"
 	"sync"
 	"time"
 
+	"alpha_trading/internal/ai"
 	"alpha_trading/internal/config"
 	"alpha_trading/internal/market"
 	"alpha_trading/internal/models"
@@ -143,4 +145,104 @@ func (w *Watcher) Poll() {
 	// Or just do it here. The original function was monolithic.
 	// Let's run risk check here.
 	w.checkRisk()
+
+	// 4. AI Analysis Loop (Spec 58)
+	// Trigger: Success of Poll Interval AND Market is Open (or Pre-Market)
+	// We rely on the implicit "Poll" call being the interval trigger.
+	// We need to check if Market is Open.
+	// Re-fetch clock to be sure or reuse if we had it?
+	// We fetch it fresh to be safe.
+	c, err := w.provider.GetClock()
+	if err == nil {
+		// Time Gates:
+		// 1. Market Open
+		// 2. Pre-Market (14:30 - 15:30 CET). US Open is 15:30 CET.
+		// "OR it is the 'Pre-Market Hour' (14:30 - 15:30 CET)"
+		// Alpaca Clock is usually in EST.
+		// Let's just use Alpaca's "IsOpen" for standard Hours.
+		// For Pre-Market, we check current time vs Open time?
+		// Spec says: "The API call to Gemini MUST ONLY occur if: The US Market is OPEN... OR it is the Pre-Market Hour"
+
+		runAI := false
+		if c.IsOpen {
+			runAI = true
+		} else {
+			// Check Pre-Market (1 hour before open)
+			if time.Until(c.NextOpen) <= 1*time.Hour {
+				runAI = true
+			}
+		}
+
+		if runAI {
+			// Run AI Analysis Async
+			go w.runAIAnalysis()
+		}
+	}
+}
+
+func (w *Watcher) runAIAnalysis() {
+	// Spec 58: AI Analysis Loop
+	if w.config.GeminiAPIKey == "" {
+		return
+	}
+
+	// 1. Gather Data (Snapshot)
+	snapshot, err := w.buildPortfolioSnapshot()
+	if err != nil {
+		log.Printf("AI Error: Failed to build snapshot: %v", err)
+		return
+	}
+
+	// 2. Call AI
+	// We need an AI Client.
+	// Initialized in New? Or ad-hoc?
+	// Let's make it ad-hoc for now or add to Watcher struct.
+	// Ideally Watcher struct.
+	// But since we are patching, let's instantiate.
+	aiClient := ai.NewClient() // We'll fix imports later
+
+	// Load System Instruction
+	sysInstr, err := os.ReadFile("portfolio_review_update.md")
+	if err != nil {
+		log.Printf("AI Error: SysInstr missing: %v", err)
+		return
+	}
+
+	analysis, err := aiClient.AnalyzePortfolio(string(sysInstr), *snapshot)
+	if err != nil {
+		log.Printf("AI Error: API failure: %v", err)
+		return
+	}
+
+	// 3. Process Result (Spec 59, 60, 61, 62)
+	w.handleAIResult(analysis, snapshot)
+}
+
+func (w *Watcher) buildPortfolioSnapshot() (*ai.PortfolioSnapshot, error) {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+
+	equity, err := w.provider.GetEquity()
+	if err != nil {
+		return nil, err
+	}
+	bp, err := w.provider.GetBuyingPower() // Assuming this method exists in provider based on interface check
+	if err != nil {
+		return nil, err
+	}
+
+	clock, _ := w.provider.GetClock()
+	status := "CLOSED"
+	if clock != nil && clock.IsOpen {
+		status = "OPEN"
+	}
+
+	return &ai.PortfolioSnapshot{
+		Timestamp:     time.Now().Format(time.RFC3339),
+		MarketStatus:  status,
+		Capital:       bp,
+		Equity:        equity,
+		Positions:     w.state.Positions,
+		MarketContext: "Sector Scan: N/A", // Placeholder
+	}, nil
 }

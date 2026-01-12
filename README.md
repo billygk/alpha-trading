@@ -29,8 +29,29 @@ It is designed for traders who want the precision of algorithmic execution (trai
 
 ### ⚙️ HFT-Grade Execution Reliability
 - **Sequential Clearance**: Automatically cleans up "Zombie Orders" before placing new ones to prevent position locking.
-- **Verification Loop**: Confirms trades are actually `Filled` on the exchange before confirming success, preventing "Ghost Fills".
-- **Re-Sync on Failure**: If an order fails or is rejected, the bot automatically triggers a full state reconciliation.
+- **Validation Loop**: Confirms trades are actually `Filled` on the exchange.
+
+---
+
+## 🤖 AI Analysis & Guardrails (Beta)
+
+**Alpha Watcher** integrates with Gemini 1.5 Pro to provide periodic portfolio reviews during market hours.
+
+### Analysis Loop
+- **Trigger**: Runs every hour during Market Open (and Pre-Market).
+- **Logic**: Analyzes technical structure and P/L to recommend `BUY`, `SELL`, `UPDATE`, or `HOLD`.
+- **Confidence Gate**: Recommendations with `< 0.70` confidence are ignored.
+
+### Automation Levels
+1.  **Semi-Autonomous (Buy/Sell)**: AI proposes a trade; Human must click `[✅ EXECUTE]`.
+2.  **Protected Autonomous Ratchet (Update)**: AI can *automatically* tighten Stop Loses (Update) ONLY IF:
+    -   The move is Monotonic (SL increases).
+    -   The new SL is > 1.5% away from current price (Buffer).
+    -   Frequency is < once per 4 hours.
+    -   Otherwise, it downgrades to a Manual Proposal.
+
+### Financial Guardrails
+- **Fiscal Budget Hard-Stop**: The bot blocks any `/buy` command (Manual or AI) if `Equity + Cost > $300`. This enforces strict capital discipline.
 
 ---
 

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"alpha_trading/internal/ai"
 	"alpha_trading/internal/config"
 	"alpha_trading/internal/storage"
 	"alpha_trading/internal/telegram"
@@ -243,4 +244,147 @@ func (w *Watcher) verifyOrderExecution(orderID string) (*alpaca.Order, error) {
 	// If we get here, it's still pending/accepted/new.
 	// We return the last known state.
 	return w.provider.GetOrder(orderID)
+}
+
+// handleAIResult processes the AI analysis (Spec 60, 61, 62).
+func (w *Watcher) handleAIResult(analysis *ai.AIAnalysis, snapshot *ai.PortfolioSnapshot) {
+	log.Printf("🤖 AI Analysis: Recommends %s (Confidence: %.2f)", analysis.Recommendation, analysis.ConfidenceScore)
+
+	// Tier 3: Low Priority (Log only)
+	if analysis.ConfidenceScore < 0.70 { // Spec 59 Guardrail
+		log.Printf("AI Recommendation Ignored due to low confidence (%.2f < 0.70).", analysis.ConfidenceScore)
+		return
+	}
+
+	ticker := ""
+	parts := strings.Fields(analysis.ActionCommand)
+	if len(parts) > 1 {
+		ticker = strings.ToUpper(parts[1])
+	}
+
+	// Spec 62: Telemetry
+	// "Tier 1: Trade Proposals ... Notification: ON"
+	// "Tier 2: Confidence > 0.7 but HOLD ... Notification: SILENT"
+
+	if analysis.Recommendation == "HOLD" {
+		// Tier 2: Silent Notification (or just log per user preference, Spec says Silent Notification? Telemetry?
+		// "Notification: SILENT" usually means send without sound or just log if no silent mode implemented.
+		// "Tier 3: Low Priority ... (LOG ONLY)".
+		// Let's just log HOLDs with high confidence for now to avoid spam, unless user wants debug.
+		log.Printf("AI STRATEGY: HOLD %s. Critique: %s", ticker, analysis.Analysis)
+		return
+	}
+
+	// Tier 1: Actionable
+	msg := fmt.Sprintf("🤖 *AI STRATEGY REPORT: %s*\n"+
+		"Conviction: %.2f | Risk: %s\n"+
+		"Critique: %s\n"+
+		"Recommendation: %s\n"+
+		"Command: `%s`",
+		ticker, analysis.ConfidenceScore, analysis.RiskAssessment, analysis.Analysis, analysis.Recommendation, analysis.ActionCommand)
+
+	// Route based on Recommendation
+	switch analysis.Recommendation {
+	case "BUY", "SELL":
+		// Spec 60: Semi-Autonomous Gate
+		// Proposals require button click.
+
+		// We format a proposal message with EXECUTE button.
+		// Use the command string as data?
+		// We can use a special callback "AI_EXECUTE_<BASE64_CMD>" or just parse it here and create a specific proposal.
+		// For simplicity, we just send the message with a "COPY COMMAND" suggestion or a button if we can parse it easily.
+		// Spec 60 says "Proposals ... require a [ ✅ EXECUTE ] button".
+		// We need to parse the command to know what to execute.
+
+		// If command is valid, show button.
+		// We use a generic AI_EXECUTE_ callback and store the command in memory?
+		// Or we trust the command string if signed? No signing.
+		// Let's store in PendingActions or similar?
+		// PendingProposals is for /buy.
+		// Let's just output the message and ask user to copy-paste or click a button that runs it?
+		// "buttons expire after 300s".
+
+		// Implementation: Store the command payload mapped to a unique ID.
+		actionID := fmt.Sprintf("AI_%d_%s", time.Now().UnixNano(), ticker)
+		w.pendingActions[actionID] = PendingAction{
+			Ticker:    ticker,
+			Action:    analysis.ActionCommand, // Hijacking Action field to store command
+			Timestamp: time.Now(),
+		}
+
+		buttons := []telegram.Button{
+			{Text: "✅ EXECUTE AI", CallbackData: fmt.Sprintf("AI_EXEC_%s", actionID)},
+			{Text: "❌ DISMISS", CallbackData: fmt.Sprintf("AI_DISMISS_%s", actionID)},
+		}
+		telegram.SendInteractiveMessage(msg, buttons)
+
+	case "UPDATE":
+		// Spec 61: Protected Autonomous Ratchet
+		// Logic: Auto-execute if:
+		// 1. new_sl > current_sl (Monotonic)
+		// 2. new_sl < market_price * 0.985 (Buffer > 1.5%) - Spec says "at least 1.5% below current"
+		// 3. Max 1 update per 4h per ticker.
+
+		// Parse params from "/update <ticker> <sl> <tp>"
+		// parts[0]=/update, parts[1]=ticker, parts[2]=sl, parts[3]=tp
+		if len(parts) >= 4 {
+			newSL, _ := decimal.NewFromString(parts[2])
+			// newTP, _ := decimal.NewFromString(parts[3])
+
+			// Check Constraints
+			safe := false
+			reason := ""
+
+			// Fetch current state
+			var currentSL decimal.Decimal
+			for _, p := range w.state.Positions {
+				if p.Ticker == ticker {
+					currentSL = p.StopLoss
+					break
+				}
+			}
+
+			currentPrice, _ := w.provider.GetPrice(ticker)
+
+			// 1. Monotonicity
+			if newSL.GreaterThan(currentSL) {
+				// 2. Buffer
+				bufferPrice := currentPrice.Mul(decimal.NewFromFloat(0.985))
+				if newSL.LessThan(bufferPrice) {
+					// 3. Frequency
+					lastUpd, ok := w.lastAlerts[ticker+"_UPDATE"]
+					if !ok || time.Since(lastUpd) > 4*time.Hour {
+						safe = true
+					} else {
+						reason = "Frequency Limit (4h)"
+					}
+				} else {
+					reason = "Buffer Violation (<1.5% gap)"
+				}
+			} else {
+				reason = "Not Monotonic (New SL <= Old SL)"
+			}
+
+			if safe {
+				// Auto-Execute
+				res := w.HandleCommand(analysis.ActionCommand) // Re-use existing handler logic
+				telegram.Notify(fmt.Sprintf("🤖⚡ **AI AUTO-RATCHET TRIGGERED**\n%s\nOutput: %s", msg, res))
+				w.lastAlerts[ticker+"_UPDATE"] = time.Now()
+			} else {
+				// Downgrade to Manual
+				msg += fmt.Sprintf("\n\n⚠️ Auto-Update Blocked: %s. Manual Confirmation Required.", reason)
+				actionID := fmt.Sprintf("AI_%d_%s", time.Now().UnixNano(), ticker)
+				w.pendingActions[actionID] = PendingAction{
+					Ticker:    ticker,
+					Action:    analysis.ActionCommand,
+					Timestamp: time.Now(),
+				}
+				buttons := []telegram.Button{
+					{Text: "✅ EXECUTE", CallbackData: fmt.Sprintf("AI_EXEC_%s", actionID)},
+					{Text: "❌ DISMISS", CallbackData: fmt.Sprintf("AI_DISMISS_%s", actionID)},
+				}
+				telegram.SendInteractiveMessage(msg, buttons)
+			}
+		}
+	}
 }

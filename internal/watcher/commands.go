@@ -174,6 +174,48 @@ func (w *Watcher) handleBuyCommand(parts []string) string {
 		return fmt.Sprintf("❌ Insufficient Buying Power.\nRequired: $%s\nAvailable: $%s", totalCost.StringFixed(2), buyingPower.StringFixed(2))
 	}
 
+	// --- Spec 63: Fiscal Budget Hard-Stop ---
+	// Logic: Current Equity + Proposed Order Value > Limit?
+	// Strictly speaking, Equity includes current positions.
+	// "Enforce the $300 limit at the execution level... Calculate: Current_Equity + Proposed_Order_Value."
+	// Wait, usually it means "Total Exposure". If Equity is $290 and I buy $20, Equity becomes $290 (cash down, asset up).
+	// So "Equity" doesn't change on buy.
+	// The Spec likely means: "Total Capital Deployed + New Capital".
+	// OR "Account Value" (Equity) should not exceed $300?
+	// "If total > $300, the order is blocked".
+	// If I have $250 equity and I buy $60 (using margin? no margin on e2-micro/cash account usually).
+	// If I have $250 equity, it means I have $250 assets+cash.
+	// If I buy $50, I swap $50 cash for $50 asset. Equity is still $250.
+	// The guardrail "Current_Equity + Proposed_Order_Value > 300" implies checking if the user is *adding* funds?
+	// But /buy uses existing BP.
+	// Interpretation: The user wants to limit the *Account Size* or *Exposure*?
+	// "Enforce the $300 limit... Current_Equity + Proposed_Order_Value".
+	// Use Equity from GetEquity() which is Net Liquidation Value.
+	// If the user *deposits* money, Equity goes up.
+	// If the user buys, Equity stays same.
+	// This logic seems to check if "Current Equity + Cost" > 300.
+	// If Equity is $200 and Cost is $50 -> Total $250. Allowed.
+	// If Equity is $280 and Cost is $30 -> Total $310. Blocked.
+	// This prevents *deploying* capital if the account is already near the limit?
+	// BUT, strict reading: `Current_Equity` + `Proposed`.
+	// Let's implement strictly.
+
+	equity, err := w.provider.GetEquity()
+	if err != nil {
+		log.Printf("Error fetching equity for budget check: %v", err)
+		// Fail open or closed? Closed for safety.
+		return "⚠️ Error verifying equity for budget check."
+	}
+
+	// We use the proposed cost as the addend
+	projectedTotal := equity.Add(totalCost)
+	budgetLimit := decimal.NewFromFloat(w.config.FiscalBudgetLimit)
+
+	if projectedTotal.GreaterThan(budgetLimit) {
+		return fmt.Sprintf("❌ Budget Violation (Spec 63):\nProjected Total ($%s) exceeds Limit ($%s).",
+			projectedTotal.StringFixed(2), budgetLimit.StringFixed(2))
+	}
+
 	// Store Proposal
 	w.mu.Lock()
 	w.pendingProposals[ticker] = PendingProposal{

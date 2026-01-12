@@ -1,0 +1,22 @@
+package ai
+
+import "github.com/shopspring/decimal"
+
+// AIAnalysis represents the structured output expected from the Gemini model (Spec 59).
+type AIAnalysis struct {
+	Analysis        string  `json:"analysis"`
+	Recommendation  string  `json:"recommendation"` // BUY, SELL, UPDATE, HOLD
+	ActionCommand   string  `json:"action_command"`
+	ConfidenceScore float64 `json:"confidence_score"`
+	RiskAssessment  string  `json:"risk_assessment"` // LOW, MEDIUM, HIGH
+}
+
+// PortfolioSnapshot represents the data payload sent to the AI.
+type PortfolioSnapshot struct {
+	Timestamp     string          `json:"timestamp"`
+	MarketStatus  string          `json:"market_status"`
+	Capital       decimal.Decimal `json:"capital_available"` // Buying Power
+	Equity        decimal.Decimal `json:"equity"`
+	Positions     interface{}     `json:"positions"`      // Raw list from state
+	MarketContext string          `json:"market_context"` // E.g., global trend or sector info if available
+}

@@ -26,6 +26,8 @@ type Config struct {
 	DefaultStopLossPct          float64 // Environment: DEFAULT_STOP_LOSS_PCT
 	DefaultTrailingStopPct      float64 // Environment: DEFAULT_TRAILING_STOP_PCT
 	AutoStatusEnabled           bool    // Environment: AUTO_STATUS_ENABLED
+	FiscalBudgetLimit           float64 // Environment: FISCAL_BUDGET_LIMIT
+	GeminiAPIKey                string  // Environment: GEMINI_API_KEY
 }
 
 // Load initializes the configuration.
@@ -76,6 +78,12 @@ func Load() *Config {
 	}
 
 	// 3. Populate Config struct with Defaults + Env Overrides
+	// Load Fiscal Budget (Spec 63)
+	fiscalLimit, err := strconv.ParseFloat(os.Getenv("FISCAL_BUDGET_LIMIT"), 64)
+	if err != nil {
+		fiscalLimit = 300.0 // Hard default per spec
+	}
+
 	cfg := &Config{
 		LogLevel:                    getEnv("WATCHER_LOG_LEVEL", "INFO"),
 		MaxLogSizeMB:                getEnvAsInt64("WATCHER_MAX_LOG_SIZE_MB", 5),
@@ -87,6 +95,8 @@ func Load() *Config {
 		DefaultStopLossPct:          getEnvAsFloat64("DEFAULT_STOP_LOSS_PCT", 5.0),            // Default 5.0%
 		DefaultTrailingStopPct:      getEnvAsFloat64("DEFAULT_TRAILING_STOP_PCT", 3.0),        // Default 3.0%
 		AutoStatusEnabled:           getEnvAsBool("AUTO_STATUS_ENABLED", false),               // Default false
+		FiscalBudgetLimit:           fiscalLimit,
+		GeminiAPIKey:                os.Getenv("GEMINI_API_KEY"),
 	}
 
 	log.Printf("Configuration Loaded: LogLevel=%s, MaxSize=%dMB, Backups=%d, PollInterval=%dm",
