@@ -534,3 +534,62 @@ Objective: If an execution failure (Point 53) is detected, the bot must ensure t
 Logic:
 Upon a canceled or rejected order status, the bot MUST automatically trigger the logic of Point 42 (Strict Mirror Sync) to re-validate exactly what is on the broker's books.
 
+## 57. State Purity Enforcement (Auto-Purge Closed Positions)
+Objective: Prevent the portfolio_state.json file from bloating and ensure the Watcher iterates only on active risk.
+Logic (The "Archive & Delete" Workflow):
+When a /sell command results in a filled status (Point 53 verification):
+Step 1: Extract the full position object (including thesis_id and final P/L).
+Step 2: Append this object to daily_performance.log as a JSON entry for the EOD report.
+Step 3: IMMEDIATELY delete the ticker key from the positions array in portfolio_state.json.
+Reconciliation Safeguard: During the /refresh sync (Point 42), any position found in the local JSON with a status of CLOSED that no longer exists in Alpaca's active list MUST be purged.
+
+## 58. AI-Directed Analysis Loop (Temporal Gating)
+Objective: Trigger AI analysis only when data is actionable to minimize API costs and noise.
+Logic:
+Trigger: Success of the 1-hour WATCHER_POLL_INTERVAL.
+Temporal Gate: The API call to Gemini MUST ONLY occur if:
+The US Market is OPEN (15:30 - 22:00 CET).
+OR it is the "Pre-Market Hour" (14:30 - 15:30 CET) to prepare the day's bias.
+Payload: System Instruction (portfolio_review_update.md) + portfolio_state.json + Current Quote + Market Status.
+
+## 59. Structured AI-Output Parsing & Confidence Scoring
+Objective: Quantify the "Strength" of AI conviction before allowing state changes.
+Mandatory Schema:
+{
+  "analysis": "string (Critique)",
+  "recommendation": "BUY | SELL | UPDATE | HOLD",
+  "action_command": "string",
+  "confidence_score": 0.0,
+  "risk_assessment": "LOW | MEDIUM | HIGH"
+}
+Guardrail: If confidence_score < 0.70, the bot MUST ignore the action_command and default to a HOLD status message.
+
+## 60. The Semi-Autonomous Gate (Buy/Sell)
+Objective: Human oversight for high-impact capital allocation.
+Logic: Proposals for /buy or /sell require a [ ✅ EXECUTE ] button click in Telegram.
+Staleness Protection: Buttons expire after 300s (Point 39). If expired, the bot posts: "⚠️ Action Canceled: AI Proposal for {{ticker}} is now stale."
+
+## 61. The "Protected" Autonomous Ratchet (Update)
+Objective: Auto-lock profits while respecting market noise and avoiding spread-wicks.
+Logic:
+The bot may auto-execute /update ONLY IF:
+new_sl > current_sl (Monotonicity Check).
+Buffer Rule: new_sl must be at least 1.5% below the current_market_price.
+Frequency Limit: Maximum of one auto-update per ticker every 4 hours.
+If these conditions aren't met, the update is downgraded to a Semi-Autonomous Gate (requires button click).
+
+## 62. Telegram Telemetry (Tiered Reporting)
+Objective: Optimize the Signal-to-Noise Ratio (SNR) in the Telegram Channel.
+Logic:
+Tier 1 (High Priority): Trade Proposals (BUY/SELL) or Auto-Ratchet executions. (Notification: ON).
+Tier 2 (Medium Priority): Confidence > 0.7 but recommendation is HOLD. (Notification: SILENT).
+Tier 3 (Low Priority): Confidence < 0.7 or Market Closed. (LOG ONLY).
+Formatting:
+🤖 AI Strategy Report: {{ticker}}
+Conviction: {{confidence_score}} | Risk: {{risk_assessment}}
+Critique: {{analysis}}
+
+## 63. Fiscal Budget Hard-Stop
+Objective: Enforce the $300 limit at the execution level.
+Logic: Before executing any /buy (manual or AI), the bot MUST calculate: Current_Equity + Proposed_Order_Value. If total > $300, the order is blocked with the message: "❌ Budget Violation: Proposed trade exceeds $300 limit."
+
