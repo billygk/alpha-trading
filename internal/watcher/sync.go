@@ -57,13 +57,17 @@ func (w *Watcher) getPrice(ticker string) string {
 // syncState performs the core logic of synchronization (Spec 29 & 40).
 // Returns count of active positions, list of discovered tickers, and error.
 func (w *Watcher) syncState() (int, []string, error) {
+	// Provider usage outside lock to avoid blocking
 	positions, err := w.provider.ListPositions()
 	if err != nil {
 		return 0, nil, err
 	}
 
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
 	// Rebuild State
-	var newPositions []models.Position
+	newPositions := []models.Position{}
 
 	// Create a map of existing HighWaterMarks to preserve them
 	existsMap := make(map[string]bool)

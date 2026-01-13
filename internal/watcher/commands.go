@@ -224,8 +224,11 @@ func (w *Watcher) handleBuyCommand(parts []string) string {
 	budgetLimit := decimal.NewFromFloat(w.config.FiscalBudgetLimit)
 
 	if projectedExposure.GreaterThan(budgetLimit) {
-		return fmt.Sprintf("❌ Budget Violation (Spec 63):\nProjected Exposure ($%s) exceeds Fiscal Limit ($%s).",
-			projectedExposure.StringFixed(2), budgetLimit.StringFixed(2))
+		return fmt.Sprintf("❌ Budget Violation (Spec 63):\n"+
+			"Usage: ($%s + $%s) = $%s > Limit: $%s\n"+
+			"Details: %s @ $%s (x%s)",
+			currentExposure.StringFixed(2), totalCost.StringFixed(2), projectedExposure.StringFixed(2), budgetLimit.StringFixed(2),
+			ticker, price.StringFixed(2), qty.StringFixed(2))
 	}
 
 	// Store Proposal

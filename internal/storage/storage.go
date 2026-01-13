@@ -54,6 +54,11 @@ func LoadState() (models.PortfolioState, error) {
 		SaveState(s)
 	}
 
+	// Ensure slice is never nil (JSON [] instead of null)
+	if s.Positions == nil {
+		s.Positions = []models.Position{}
+	}
+
 	return s, nil
 }
 
