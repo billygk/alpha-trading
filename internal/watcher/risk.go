@@ -374,11 +374,14 @@ func (w *Watcher) handleAIResult(analysis *ai.AIAnalysis, snapshot *ai.Portfolio
 				reason = "Not Monotonic (New SL <= Old SL)"
 			}
 
+			// Override: Force Manual Confirmation (User Request)
 			if safe {
-				// Auto-Execute
-				res := w.HandleCommand(analysis.ActionCommand) // Re-use existing handler logic
-				telegram.Notify(fmt.Sprintf("🤖⚡ **AI AUTO-RATCHET TRIGGERED**\n%s\nOutput: %s", msg, res))
-				w.lastAlerts[ticker+"_UPDATE"] = time.Now()
+				safe = false
+				reason = "Manual Confirmation Enforced"
+			}
+
+			if safe {
+				// Unreachable
 			} else {
 				// Downgrade to Manual
 				msg += fmt.Sprintf("\n\n⚠️ Auto-Update Blocked: %s. Manual Confirmation Required.", reason)
