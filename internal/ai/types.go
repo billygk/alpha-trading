@@ -13,11 +13,13 @@ type AIAnalysis struct {
 
 // PortfolioSnapshot represents the data payload sent to the AI.
 type PortfolioSnapshot struct {
-	Timestamp     string          `json:"timestamp"`
-	MarketStatus  string          `json:"market_status"`
-	Capital       decimal.Decimal `json:"capital_available"` // Buying Power
-	Equity        decimal.Decimal `json:"equity"`
-	FiscalLimit   decimal.Decimal `json:"fiscal_limit"`   // Spec 63 Hard Limit
-	Positions     interface{}     `json:"positions"`      // Raw list from state
-	MarketContext string          `json:"market_context"` // E.g., global trend or sector info if available
+	Timestamp       string          `json:"timestamp"`
+	MarketStatus    string          `json:"market_status"`
+	Capital         decimal.Decimal `json:"capital_available"` // Buying Power
+	Equity          decimal.Decimal `json:"equity"`
+	FiscalLimit     decimal.Decimal `json:"fiscal_limit"`     // Spec 63 Hard Limit
+	AvailableBudget decimal.Decimal `json:"available_budget"` // Spec 65: FiscalLimit - CurrentExposure
+	CurrentExposure decimal.Decimal `json:"current_exposure"` // Total cost basis of active positions
+	Positions       interface{}     `json:"positions"`        // Raw list from state
+	MarketContext   string          `json:"market_context"`   // E.g., global trend or sector info if available
 }

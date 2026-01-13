@@ -343,7 +343,7 @@ func (w *Watcher) handleSellCommand(parts []string) string {
 							msg = append(msg, "✅ Local state purged (Spec 57).")
 						}
 						w.mu.Unlock()
-						w.saveStateAsync()
+						w.saveState()
 					}
 				}
 				break
@@ -427,7 +427,7 @@ func (w *Watcher) handleUpdateCommand(parts []string) string {
 	}
 
 	// Spec 51: Explicit confirmation format
-	w.saveStateAsync()
+	w.saveState()
 	return fmt.Sprintf("✅ Parameters Updated for %s.\nNew Floor (SL): $%s | New Ceiling (TP): $%s",
 		ticker, sl.StringFixed(2), tp.StringFixed(2))
 }

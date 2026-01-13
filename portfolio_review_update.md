@@ -21,6 +21,7 @@ You will receive a JSON payload containing:
 3. **Capital/Equity**: Available buying power and total account value.  
 4. **Fiscal Limit**: Maximum total exposure allowed ($300).  
 5. **Positions**: List of active assets with Entry Price, Current Price, SL, TP, and HWM.
+6. **Budgets**: Current Exposure, Available Budget, Fiscal Limit.
 
 # **Priority Watchlist (2026 Thematic Pillars)**
 

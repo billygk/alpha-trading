@@ -170,7 +170,7 @@ func (w *Watcher) HandleCallback(callbackID, data string) string {
 		if status == "filled" {
 			if posIndex != -1 {
 				w.state.Positions[posIndex].Status = "EXECUTED"
-				w.saveStateAsync()
+				w.saveState()
 			}
 			return fmt.Sprintf("✅ ORDER PLACED: Sold %s at Market (Filled).", ticker)
 		}
@@ -257,7 +257,7 @@ func (w *Watcher) handleBuyCallback(data string) string {
 			}
 
 			w.state.Positions = append(w.state.Positions, newPos)
-			w.saveStateAsync()
+			w.saveState()
 
 			return fmt.Sprintf("✅ PURCHASED: %s %s @ Market (Filled).\nStatus: %s\nSL: $%s | TP: $%s\nTracking Active.",
 				proposal.Qty.StringFixed(2), ticker, status, proposal.StopLoss.StringFixed(2), proposal.TakeProfit.StringFixed(2))

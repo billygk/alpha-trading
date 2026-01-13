@@ -605,3 +605,10 @@ Response: The bot MUST reply with the full Tier 1 Intelligence Report (Point 62)
 Guardrail: To prevent "API Spamming" and excessive costs, the /analyze command MUST have a 600-second (10-minute) cooldown per user. If triggered during cooldown, the bot replies: "⏳ Analysis cooling down. Next available in {{remaining_seconds}}s."
 Contextual Scope: If a ticker is provided (e.g., /analyze XBI), the AI prompt should be modified to focus specifically on that ticker's recent price action and sector news.
 
+## 65. AI Budget Awareness (State Injection)
+Objective: Prevent AI from recommending trades that exceed the fiscal limit.
+Implementation:
+Update PortfolioState struct to include FiscalLimit and AvailableBudget.
+Logic: AvailableBudget = FiscalLimit - CurrentTotalExposure.
+Injection: These two fields MUST be included in the JSON payload sent to Gemini during /analyze or the automated review loop.
+Requirement: If AvailableBudget is less than the price of a single share of a recommended ticker, the AI must be instructed to return HOLD.

@@ -14,13 +14,26 @@ import (
 
 // saveStateAsync saves without blocking, or just call storage?
 // For simplicity and safety, we just call storage.SaveState since it's fast enough on low volume.
-func (w *Watcher) saveStateAsync() {
-	// Note: We are already under lock in handleStreamUpdate,
-	// so reading w.state is safe, but SaveState reads it too?
-	// Storage.SaveState takes a copy of the struct by value, so it is safe.
-	// However, IO operations inside a lock are generally bad.
-	// But given the simplicity and low freq of triggers, it's acceptable for now.
-	// Optimally: send to a channel.
+// saveState persists the current state to disk with updated metrics.
+func (w *Watcher) saveState() {
+	// Spec 65: Update Budget Metrics before save
+	w.mu.RLock()
+	// Calculate Exposure
+	currentExposure := decimal.Zero
+	for _, p := range w.state.Positions {
+		if p.Status == "ACTIVE" {
+			cost := p.Quantity.Mul(p.EntryPrice)
+			currentExposure = currentExposure.Add(cost)
+		}
+	}
+	w.mu.RUnlock()
+
+	w.mu.Lock()
+	w.state.CurrentExposure = currentExposure
+	w.state.FiscalLimit = decimal.NewFromFloat(w.config.FiscalBudgetLimit)
+	w.state.AvailableBudget = w.state.FiscalLimit.Sub(currentExposure)
+	w.mu.Unlock()
+
 	storage.SaveState(w.state)
 }
 
@@ -158,7 +171,7 @@ func (w *Watcher) syncState() (int, []string, error) {
 	}
 
 	w.state.Positions = newPositions
-	w.saveStateAsync()
+	w.saveState()
 
 	return len(newPositions), discoveredTickers, nil
 }

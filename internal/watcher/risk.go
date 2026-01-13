@@ -8,7 +8,6 @@ import (
 
 	"alpha_trading/internal/ai"
 	"alpha_trading/internal/config"
-	"alpha_trading/internal/storage"
 	"alpha_trading/internal/telegram"
 
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
@@ -36,7 +35,7 @@ type PendingProposal struct {
 // checkRisk iterates positions and checks for triggers.
 func (w *Watcher) checkRisk() {
 	w.mu.Lock()
-	defer w.mu.Unlock()
+	// defer w.mu.Unlock() removed to prevent double-unlock with manual Unlock() below
 
 	// --- QUEUED ORDER CHECK (Empty Portfolio) ---
 	if len(w.state.Positions) == 0 {
@@ -164,7 +163,8 @@ func (w *Watcher) checkRisk() {
 	// Spec 32: Automated Operational Awareness
 
 	w.state.LastSync = time.Now().In(config.CetLoc).Format(time.RFC3339)
-	storage.SaveState(w.state)
+	w.mu.Unlock() // Unlock before save to prevent deadlock if saveState acquires lock
+	w.saveState()
 }
 
 // ensureSequentialClearance ensures all open orders for a ticker are canceled and cleared (Spec 54).

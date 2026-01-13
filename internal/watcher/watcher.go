@@ -256,13 +256,26 @@ func (w *Watcher) buildPortfolioSnapshot(ticker string) (*ai.PortfolioSnapshot, 
 		marketContext = fmt.Sprintf("Analysis Focus: %s", ticker)
 	}
 
+	// Spec 65: Calculate Available Budget
+	var currentExposure decimal.Decimal
+	for _, p := range w.state.Positions {
+		if p.Status == "ACTIVE" {
+			cost := p.Quantity.Mul(p.EntryPrice)
+			currentExposure = currentExposure.Add(cost)
+		}
+	}
+	fiscalLimit := decimal.NewFromFloat(w.config.FiscalBudgetLimit)
+	availableBudget := fiscalLimit.Sub(currentExposure)
+
 	return &ai.PortfolioSnapshot{
-		Timestamp:     time.Now().Format(time.RFC3339),
-		MarketStatus:  status,
-		Capital:       bp,
-		Equity:        equity,
-		FiscalLimit:   decimal.NewFromFloat(w.config.FiscalBudgetLimit),
-		Positions:     w.state.Positions,
-		MarketContext: marketContext,
+		Timestamp:       time.Now().Format(time.RFC3339),
+		MarketStatus:    status,
+		Capital:         bp,
+		Equity:          equity,
+		FiscalLimit:     fiscalLimit,
+		AvailableBudget: availableBudget,
+		CurrentExposure: currentExposure,
+		Positions:       w.state.Positions,
+		MarketContext:   marketContext,
 	}, nil
 }
