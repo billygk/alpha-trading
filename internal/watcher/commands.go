@@ -427,7 +427,7 @@ func (w *Watcher) handleUpdateCommand(parts []string) string {
 	}
 
 	// Spec 51: Explicit confirmation format
-	w.saveState()
+	w.saveStateLocked()
 	return fmt.Sprintf("✅ Parameters Updated for %s.\nNew Floor (SL): $%s | New Ceiling (TP): $%s",
 		ticker, sl.StringFixed(2), tp.StringFixed(2))
 }

@@ -32,15 +32,28 @@ func (w *Watcher) HandleCallback(callbackID, data string) string {
 	ticker := parts[2]
 
 	w.mu.Lock()
-	defer w.mu.Unlock()
-
 	pending, exists := w.pendingActions[ticker]
 	if !exists {
+		w.mu.Unlock()
 		return fmt.Sprintf("⚠️ Action for %s expired or not found.", ticker)
 	}
 
 	// Always cleanup pending action at end (Point 6)
 	delete(w.pendingActions, ticker)
+
+	// 1.5 Find Position (Used for TP Guardrail & Execution)
+	// Make a copy for validation outside lock
+	var position models.Position
+	activeFound := false
+
+	for _, p := range w.state.Positions {
+		if p.Ticker == ticker && p.Status == "ACTIVE" {
+			position = p
+			activeFound = true
+			break
+		}
+	}
+	w.mu.Unlock()
 
 	if action == "CANCEL" {
 		return fmt.Sprintf("❌ Action for %s cancelled by user.", ticker)
@@ -51,20 +64,6 @@ func (w *Watcher) HandleCallback(callbackID, data string) string {
 		ttl := time.Duration(w.config.ConfirmationTTLSec) * time.Second
 		if time.Since(pending.Timestamp) > ttl {
 			return fmt.Sprintf("⏳ TIMEOUT: Confirmation for %s is too old (> %ds). Action aborted.", ticker, w.config.ConfirmationTTLSec)
-		}
-
-		// 1.5 Find Position (Used for TP Guardrail & Execution)
-		posIndex := -1
-		var position models.Position
-		activeFound := false
-
-		for i, p := range w.state.Positions {
-			if p.Ticker == ticker && p.Status == "ACTIVE" {
-				position = p
-				posIndex = i
-				activeFound = true
-				break
-			}
 		}
 
 		if !activeFound {
@@ -139,39 +138,29 @@ func (w *Watcher) HandleCallback(callbackID, data string) string {
 		}
 
 		status := strings.ToLower(verifiedOrder.Status)
-		// We trust verifyOrderExecution to return success only if it's filled or looking good?
-		// check verifyOrderExecution impl: it returns error if canceled/rejected.
-		// If it returns nil error, it might still necessarily be 'filled' if it loop finished, OR 'new' if loop timed out?
-		// My impl returns last state.
-
 		// Double check status just in case
 		if status == "canceled" || status == "rejected" || status == "expired" {
 			return fmt.Sprintf("❌ Execution Failed: Order Status %s.", status)
 		}
 
 		// 5. Update State (Only if we are confident)
-		// If status is 'filled', we are good.
-		// If status is 'new'/'accepted', we mark EXECUTED?
-		// Spec says "IF Status == 'filled': Send ... and perform saveState()".
-		// "Position Closed/Opened".
-		// What if it is still 'new' after 5 seconds?
-		// We probably strictly want 'filled'.
-		// But Market orders should fill instantly.
-		// If not filled, it means we are pending.
-		// Logic: If 'filled', mark EXECUTED. If 'new', maybe mark EXECUTED (Pending Fill)?
-		// Watcher loop will eventually see it?
-		// Spec 53: "IF Status == 'filled': Send ... and perform saveState()".
-		// Implicitly: If NOT filled, do NOT update state?
-		// But if we don't update state, we might double sell?
-		// Spec 26 (Order State Sync) prevents duplicate orders.
-		// So leaving it as ACTIVE is safer if order is pending?
-		// Let's stick to marking EXECUTED only on 'filled'.
-
 		if status == "filled" {
-			if posIndex != -1 {
-				w.state.Positions[posIndex].Status = "EXECUTED"
-				w.saveState()
+			w.mu.Lock()
+			// Find position again by Ticker (index might have shifted if other things happened)
+			foundIndex := -1
+			for i, p := range w.state.Positions {
+				if p.Ticker == ticker && p.Status == "ACTIVE" {
+					foundIndex = i
+					break
+				}
 			}
+
+			if foundIndex != -1 {
+				w.state.Positions[foundIndex].Status = "EXECUTED"
+				w.saveStateLocked()
+			}
+			w.mu.Unlock()
+
 			return fmt.Sprintf("✅ ORDER PLACED: Sold %s at Market (Filled).", ticker)
 		}
 
@@ -191,13 +180,13 @@ func (w *Watcher) handleBuyCallback(data string) string {
 	ticker := parts[2]
 
 	w.mu.Lock()
-	defer w.mu.Unlock()
-
 	proposal, exists := w.pendingProposals[ticker]
 	if !exists {
+		w.mu.Unlock()
 		return fmt.Sprintf("⚠️ Proposal for %s expired or not found.", ticker)
 	}
 	delete(w.pendingProposals, ticker) // Cleanup
+	w.mu.Unlock()
 
 	// 1. Temporal Gate (Spec 39)
 	ttl := time.Duration(w.config.ConfirmationTTLSec) * time.Second
@@ -256,8 +245,10 @@ func (w *Watcher) handleBuyCallback(data string) string {
 				newPos.HighWaterMark = *verifiedOrder.FilledAvgPrice
 			}
 
+			w.mu.Lock()
 			w.state.Positions = append(w.state.Positions, newPos)
-			w.saveState()
+			w.saveStateLocked()
+			w.mu.Unlock()
 
 			return fmt.Sprintf("✅ PURCHASED: %s %s @ Market (Filled).\nStatus: %s\nSL: $%s | TP: $%s\nTracking Active.",
 				proposal.Qty.StringFixed(2), ticker, status, proposal.StopLoss.StringFixed(2), proposal.TakeProfit.StringFixed(2))

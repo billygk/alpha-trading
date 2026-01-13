@@ -15,9 +15,17 @@ import (
 // saveStateAsync saves without blocking, or just call storage?
 // For simplicity and safety, we just call storage.SaveState since it's fast enough on low volume.
 // saveState persists the current state to disk with updated metrics.
+// It acquires the lock internally.
 func (w *Watcher) saveState() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.saveStateLocked()
+}
+
+// saveStateLocked persists the current state to disk with updated metrics.
+// It assumes w.mu is ALREADY LOCKED by the caller.
+func (w *Watcher) saveStateLocked() {
 	// Spec 65: Update Budget Metrics before save
-	w.mu.RLock()
 	// Calculate Exposure
 	currentExposure := decimal.Zero
 	for _, p := range w.state.Positions {
@@ -26,13 +34,10 @@ func (w *Watcher) saveState() {
 			currentExposure = currentExposure.Add(cost)
 		}
 	}
-	w.mu.RUnlock()
 
-	w.mu.Lock()
 	w.state.CurrentExposure = currentExposure
 	w.state.FiscalLimit = decimal.NewFromFloat(w.config.FiscalBudgetLimit)
 	w.state.AvailableBudget = w.state.FiscalLimit.Sub(currentExposure)
-	w.mu.Unlock()
 
 	storage.SaveState(w.state)
 }
@@ -171,7 +176,7 @@ func (w *Watcher) syncState() (int, []string, error) {
 	}
 
 	w.state.Positions = newPositions
-	w.saveState()
+	w.saveStateLocked()
 
 	return len(newPositions), discoveredTickers, nil
 }

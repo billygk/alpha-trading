@@ -470,3 +470,15 @@ Next Steps: Monitor deployments.
   - **Stability**: Added Markdown Sanitization (Code Blocks) to prevent Telegram API 400 errors on special characters.
 - Next Steps: Verified.
 ---
+
+## [2026-01-13] Fixed /refresh Deadlock
+- Action: Debugged and fixed a critical deadlock in state synchronization.
+- Problem: `/refresh` calls `syncState` (acquires Lock) -> `saveState` (tries to acquire Lock) -> Deadlock. Similar issues in `HandleCallback` and `handleBuyCallback`.
+- Fix: 
+  - Refactored `saveState` to separate `saveStateLocked` (logic) and `saveState` (locking wrapper).
+  - Updated internal calls to use `saveStateLocked` where lock is already held.
+  - Refactored `HandleCallback` and `handleBuyCallback` to release locks before performing long-running network operations, eliminating potential deadlocks during re-sync mechanisms.
+- Result: `/refresh` and interactive buttons are now responsive and thread-safe.
+- Next Steps: Restart bot and verify.
+---
+
