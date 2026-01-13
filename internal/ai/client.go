@@ -117,6 +117,17 @@ func (c *Client) AnalyzePortfolio(systemInstruction string, snapshot PortfolioSn
 	text := parts[0].(map[string]interface{})["text"].(string)
 
 	// Unmarshal the JSON text inside the response
+	// Helper to handle potential array response (some models/prompts return list)
+	var analysisList []AIAnalysis
+	if err := json.Unmarshal([]byte(text), &analysisList); err == nil {
+		if len(analysisList) > 0 {
+			return &analysisList[0], nil
+		}
+		// If it was valid JSON array but empty, treating as an error or we could return empty analysis
+		return nil, fmt.Errorf("AI returned empty analysis list")
+	}
+
+	// Fallback: try parsing as single object
 	var analysis AIAnalysis
 	if err := json.Unmarshal([]byte(text), &analysis); err != nil {
 		return nil, fmt.Errorf("failed to parse AI JSON output: %v. Raw: %s", err, text)
