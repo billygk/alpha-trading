@@ -294,13 +294,34 @@ func (w *Watcher) handleAICallback(data string) string {
 	}
 
 	// EXECUTE
-	// The pending.Action field holds the command string, e.g., "/update XBI 121.399 133.034 95"
-	cmd := pending.Action
-	log.Printf("Executing AI Command: %s", cmd)
+	// The pending.Action field holds the command string, e.g., "/update XBI ...; /buy ..."
+	rawCmd := pending.Action
+	log.Printf("Executing AI Command: %s", rawCmd)
 
-	// Recursively execute the stored command
-	// HandleCommand handles its own locking if needed.
-	result := w.HandleCommand(cmd)
+	// Spec 67: Support multi-command rotation (split by semicolon)
+	commands := strings.Split(rawCmd, ";")
+	var resultsBuilder strings.Builder
 
-	return fmt.Sprintf("🤖⚡ **AI EXECUTION**\nCommand: `%s`\nResult: %s", cmd, result)
+	for i, cmd := range commands {
+		cmd = strings.TrimSpace(cmd)
+		if cmd == "" {
+			continue
+		}
+
+		// Recursively execute the stored command
+		// HandleCommand handles its own locking if needed.
+		res := w.HandleCommand(cmd)
+
+		if i > 0 {
+			resultsBuilder.WriteString("\n---\n")
+		}
+		resultsBuilder.WriteString(fmt.Sprintf("Cmd: `%s`\nResult: %s", cmd, res))
+
+		// Small sleep between commands to ensure order sequence/network clearance
+		if len(commands) > 1 {
+			time.Sleep(500 * time.Millisecond)
+		}
+	}
+
+	return fmt.Sprintf("🤖⚡ **AI EXECUTION**\n%s", resultsBuilder.String())
 }

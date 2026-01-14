@@ -119,6 +119,7 @@ func (w *Watcher) syncState() (int, []string, error) {
 		tp := decimal.Zero
 		tsPct := decimal.NewFromFloat(w.config.DefaultTrailingStopPct)
 		thesisID := fmt.Sprintf("IMPORTED_%d", time.Now().Unix())
+		var openedAt time.Time // Default zero
 
 		// If exists in local state, preserve SL/TP/TS
 		if existsMap[ticker] {
@@ -128,6 +129,10 @@ func (w *Watcher) syncState() (int, []string, error) {
 					tp = oldP.TakeProfit
 					tsPct = oldP.TrailingStopPct
 					thesisID = oldP.ThesisID
+					// Preserve OpenedAt (Spec 66: Stagnation Timer)
+					if !oldP.OpenedAt.IsZero() {
+						openedAt = oldP.OpenedAt
+					}
 
 					// Backfill Defaults if Zero
 					if sl.IsZero() {
@@ -152,6 +157,9 @@ func (w *Watcher) syncState() (int, []string, error) {
 			tpMult := decimal.NewFromInt(1).Add(decimal.NewFromFloat(w.config.DefaultTakeProfitPct).Div(decimal.NewFromInt(100)))
 			tp = avgEntry.Mul(tpMult)
 
+			// New positions default to Now() for stagnation tracking
+			openedAt = time.Now()
+
 			discoveredTickers = append(discoveredTickers, ticker)
 			log.Printf("ℹ️ Position discovered: %s. Applied Default SL ($%s) & TP ($%s).", ticker, sl.StringFixed(2), tp.StringFixed(2))
 		}
@@ -171,6 +179,7 @@ func (w *Watcher) syncState() (int, []string, error) {
 			HighWaterMark:   hwm,
 			TrailingStopPct: tsPct,
 			ThesisID:        thesisID,
+			OpenedAt:        openedAt,
 		}
 		newPositions = append(newPositions, newPos)
 	}

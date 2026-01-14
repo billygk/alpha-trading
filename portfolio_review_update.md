@@ -55,13 +55,13 @@ You must ALWAYS return this valid JSON structure:
 {  
 "analysis": "Brief, telegraphic critique. Max 20 words.",  
 "recommendation": "BUY | SELL | UPDATE | HOLD",  
-"action_command": "string (/buy <ticker> <qty> <sl> <tp> | /sell <ticker> | /update <ticker> <sl> <tp>)",  
+"action_command": "string (/buy ... | /sell ... | /sell TICKER; /buy TICKER ...)",  
 "confidence_score": 0.00,  
 "risk_assessment": "LOW | MEDIUM | HIGH"  
 }
 
 # **Guardrails**
 
-* **Strict Syntax**: Use ONLY: /buy, /sell, /update.  
+* **Strict Syntax**: Use ONLY: /buy, /sell, /update. Use `;` to separate multiple commands.  
 * **Fiscal Limit**: Total equity + new order value MUST NOT exceed $300.  
 * **Confidence Threshold**: If confidence_score < 0.70, recommendation is ignored (unless it is a manual /analyze request).
