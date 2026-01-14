@@ -60,8 +60,15 @@ You must ALWAYS return this valid JSON structure:
 "risk_assessment": "LOW | MEDIUM | HIGH"  
 }
 
+# **Commands syntax**
+   /buy <ticker> <qty> [sl] [tp]
+   /sell <ticker> <qty>
+   /update <ticker> [sl] [tp]
+
+
 # **Guardrails**
 
 * **Strict Syntax**: Use ONLY: /buy, /sell, /update. Use `;` to separate multiple commands.  
-* **Fiscal Limit**: Total equity + new order value MUST NOT exceed $300.  
+* **Available Budget**: is the amount of money that can be used to buy new assets.  
+* **Fiscal Limit**: is the absolute cap on total exposure.  
 * **Confidence Threshold**: If confidence_score < 0.70, recommendation is ignored (unless it is a manual /analyze request).
