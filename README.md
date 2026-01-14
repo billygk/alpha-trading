@@ -16,6 +16,7 @@ It is designed for traders who want the precision of algorithmic execution (trai
 - **Universal Temporal Gate**: All actionable alerts typically expire after 5 minutes (TTL) to prevent stale execution.
 - **Alert Fatigue Prevention**: intelligently suppresses duplicate alerts for the same position within a 15-minute window.
 - **HWM Monotonicity Guardrail**: Ensures the "High Water Mark" used for trailing stops never decreases due to systematic errors, guaranteeing the integrity of the trailing stop floor.
+- **Temporal Stagnation Exit**: Monitors positions for "Dead Money" (held > 5 days with < 1% movement) and alerts you to liquidate them to free up capital (Spec 66).
 
 ### 💬 Interactive Telegram Control
 - **Proposed Trades**: Use `/buy` to get a calculated trade proposal with risk/reward ratios before you commit.
@@ -41,6 +42,7 @@ It is designed for traders who want the precision of algorithmic execution (trai
 - **Trigger**: Runs every hour during Market Open (and Pre-Market).
 - **Logic**: Analyzes technical structure and P/L to recommend `BUY`, `SELL`, `UPDATE`, or `HOLD`.
 - **Confidence Gate**: Recommendations with `< 0.70` confidence are ignored.
+- **Portfolio Rotation**: Identifies opportunity costs. If budget is full, the AI searches for "weakest links" (stagnant or underperforming) and recommends rotating capital into higher-conviction opportunities (Spec 67).
 
 ### Automation Levels
 1.  **Semi-Autonomous (Buy/Sell)**: AI proposes a trade; Human must click `[✅ EXECUTE]`.
@@ -106,6 +108,7 @@ It is designed for traders who want the precision of algorithmic execution (trai
 | `DEFAULT_TAKE_PROFIT_PCT` | `15.0` | Default TP % applied to new or simplified orders. |
 | `DEFAULT_TRAILING_STOP_PCT` | `3.0` | Default Trailing Stop % applied to new or simplified orders. |
 | `AUTO_STATUS_ENABLED` | `false` | If `true`, pushes the `/status` dashboard after every poll (during market hours). |
+| `MAX_STAGNATION_HOURS` | `120` | Minimum hours a position must be held before checking for stagnation (Spec 66). |
 | `GEMINI_MODEL` | `gemini-1.5-flash` | The Gemini model version to use for AI analysis (e.g. `gemini-2.5-pro`). |
 
 ---

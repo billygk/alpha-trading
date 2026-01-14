@@ -85,6 +85,27 @@ func (w *Watcher) checkRisk() {
 			pos.HighWaterMark = price // Update local copy for calculations below
 		}
 
+		// Spec 66: Temporal Stagnation Check (Dead Money Guard)
+		if !pos.OpenedAt.IsZero() {
+			hoursOpen := time.Since(pos.OpenedAt).Hours()
+			if hoursOpen > float64(w.config.MaxStagnationHours) {
+				// Calculate P/L %
+				diff := price.Sub(pos.EntryPrice)
+				pct := diff.Div(pos.EntryPrice).Mul(decimal.NewFromInt(100))
+
+				// Trigger if "Flat" (Absolute change < 1.0%)
+				if pct.Abs().LessThan(decimal.NewFromFloat(1.0)) {
+					key := fmt.Sprintf("%s_STAGNATION", pos.Ticker)
+					// Alert once every 24h
+					if last, ok := w.lastAlerts[key]; !ok || time.Since(last) > 24*time.Hour {
+						telegram.Notify(fmt.Sprintf("⏳ STAGNATION ALERT: %s has been flat for %d days (%.2f%%). Consider manual liquidation to free up budget.",
+							pos.Ticker, int(hoursOpen/24), pct.InexactFloat64()))
+						w.lastAlerts[key] = time.Now()
+					}
+				}
+			}
+		}
+
 		log.Printf("[%s] Current: $%s | SL: $%s | TP: $%s | HWM: $%s", pos.Ticker, price.StringFixed(2), pos.StopLoss.StringFixed(2), pos.TakeProfit.StringFixed(2), pos.HighWaterMark.StringFixed(2))
 
 		// Check Trailing Stop

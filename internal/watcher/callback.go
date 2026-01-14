@@ -237,6 +237,7 @@ func (w *Watcher) handleBuyCallback(data string) string {
 				HighWaterMark:   proposal.Price,
 				TrailingStopPct: proposal.TrailingStopPct,
 				ThesisID:        fmt.Sprintf("MANUAL_%d", time.Now().Unix()),
+				OpenedAt:        time.Now(),
 			}
 
 			// Refine EntryPrice if available

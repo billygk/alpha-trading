@@ -27,6 +27,7 @@ type Config struct {
 	DefaultTrailingStopPct      float64 // Environment: DEFAULT_TRAILING_STOP_PCT
 	AutoStatusEnabled           bool    // Environment: AUTO_STATUS_ENABLED
 	FiscalBudgetLimit           float64 // Environment: FISCAL_BUDGET_LIMIT
+	MaxStagnationHours          int     // Environment: MAX_STAGNATION_HOURS (Spec 66)
 	GeminiAPIKey                string  // Environment: GEMINI_API_KEY
 }
 
@@ -97,6 +98,7 @@ func Load() *Config {
 		DefaultTrailingStopPct:      getEnvAsFloat64("DEFAULT_TRAILING_STOP_PCT", 3.0),        // Default 3.0%
 		AutoStatusEnabled:           getEnvAsBool("AUTO_STATUS_ENABLED", false),               // Default false
 		FiscalBudgetLimit:           fiscalLimit,
+		MaxStagnationHours:          getEnvAsInt("MAX_STAGNATION_HOURS", 120), // Default 120 (5 days)
 		GeminiAPIKey:                os.Getenv("GEMINI_API_KEY"),
 	}
 

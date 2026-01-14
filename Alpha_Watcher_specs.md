@@ -612,3 +612,25 @@ Update PortfolioState struct to include FiscalLimit and AvailableBudget.
 Logic: AvailableBudget = FiscalLimit - CurrentTotalExposure.
 Injection: These two fields MUST be included in the JSON payload sent to Gemini during /analyze or the automated review loop.
 Requirement: If AvailableBudget is less than the price of a single share of a recommended ticker, the AI must be instructed to return HOLD.
+
+## 66. Temporal Stagnation Exit (The "Dead Money" Guard)
+Objective: Free up capital from assets that show zero momentum over a long period.
+Logic:
+Add OpenedAt (timestamp) to Position struct.
+Configuration: Add MAX_STAGNATION_HOURS to .env (Default: 120 - 5 trading days).
+Trigger: If now - OpenedAt > MAX_STAGNATION_HOURS AND Current_Gain_Loss < 1.0% (flat), trigger an alert: "⏳ STAGNATION ALERT: {{ticker}} has been flat for 5 days. Consider manual liquidation to free up budget."
+Note: This is a notification only, not an auto-sell, to preserve user intent.
+update README.md file with relevant information.
+update .env file with sample MAX_STAGNATION_HOURS value.
+update project_log.md file.
+
+## 67. AI-Driven Portfolio Rotation
+Objective: Allow the AI to propose "Swaps" when capital is fully deployed but a higher-conviction opportunity arises.
+Implementation:
+In the AI System Instruction, explicitly permit the SELL recommendation for the sole purpose of capital rotation.
+Logic: If AvailableBudget < Required_Entry AND a Pillar asset shows high conviction, the AI should identify the "weakest link" in the current portfolio (lowest P/L or highest stagnation) and recommend a /sell <weak_ticker> followed by a /buy <strong_ticker>.
+UI: The bot must present these as a linked "Rotation Proposal" if possible, or two sequential proposals.
+update README.md file with relevant information.
+update .env file with sample MAX_STAGNATION_HOURS value.
+update project_log.md file.
+

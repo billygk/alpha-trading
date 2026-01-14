@@ -1,6 +1,10 @@
 package models
 
-import "github.com/shopspring/decimal"
+import (
+	"time"
+
+	"github.com/shopspring/decimal"
+)
 
 // Position represents a single trading position.
 //
@@ -17,6 +21,7 @@ type Position struct {
 	ThesisID        string          `json:"thesis_id"`         // ID linking to the trade thesis
 	HighWaterMark   decimal.Decimal `json:"high_water_mark"`   // Highest price reached since entry
 	TrailingStopPct decimal.Decimal `json:"trailing_stop_pct"` // Trailing Stop percentage (e.g., 5.0 for 5%)
+	OpenedAt        time.Time       `json:"opened_at"`         // Spec 66: Timestamp when position was opened
 }
 
 // PortfolioState tracks the state of the portfolio and system.

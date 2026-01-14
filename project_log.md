@@ -482,3 +482,16 @@ Next Steps: Monitor deployments.
 - Next Steps: Restart bot and verify.
 ---
 
+## [2026-01-14] Implemented Specs 66 & 67 (Stagnation & Rotation)
+- Action: Implemented Advanced Capital Efficiency Logic.
+- Result:
+  - **Spec 66**: Implemented `Temporal Stagnation Exit`.
+    - Added `OpenedAt` to Position struct.
+    - Added `MAX_STAGNATION_HOURS` (Default: 120/5 days) to Config.
+    - Bot alerts if a position is held > 5 days with < 1% movement ("Dead Money").
+  - **Spec 67**: Enabled `AI-Driven Portfolio Rotation`.
+    - Updated AI Instructions to prioritize swapping "Weak Links" (Stagnant/Underperforming) for "Pilar Assets" when budget is tight.
+    - AI will recommend `/sell` followed by `/buy` sequence.
+- Next Steps: Deploy and Validate.
+---
+
