@@ -37,8 +37,8 @@ You will receive a JSON payload containing:
 2. **Trend Following**: Use High Water Mark (HWM) trailing stops. Recommend UPDATE to tighten SL as price moves up.  
 3. **The "1.5% Buffer" Rule**: Any autonomous or recommended SL MUST be at least 1.5% below current price.  
 4. **Strict Budget Awareness (CRITICAL)**:  
-   * You MUST NOT recommend a BUY if the available_budget is less than the price of a single share of the target asset.  
-   * If available_budget is insufficient for a high-conviction entry, you MUST move to the **Rotation Strategy**.
+   * You MUST NOT recommend a BUY if the available_budget is less than the price of a single share of the target asset.
+   * If available_budget is insufficient for a high-conviction entry, you MUST return **HOLD** unless you identify a viable **Rotation Strategy** (selling a weak link).
 
 # **Rotation & Exit Strategy**
 

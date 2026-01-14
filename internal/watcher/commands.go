@@ -30,6 +30,7 @@ func (w *Watcher) HandleCommand(cmd string) string {
 	case "/ping":
 		return "Pong 🏓"
 	case "/status":
+		w.SyncWithBroker() // Spec 68 JIT
 		return w.getStatus()
 	case "/list":
 		return w.getList()
@@ -51,6 +52,7 @@ func (w *Watcher) HandleCommand(cmd string) string {
 		println("Help command received")
 		return w.getHelp()
 	case "/buy":
+		w.SyncWithBroker() // Spec 68 JIT
 		return w.handleBuyCommand(parts)
 	case "/scan":
 		return w.handleScanCommand(parts)
@@ -60,6 +62,7 @@ func (w *Watcher) HandleCommand(cmd string) string {
 		return w.handleSellCommand(parts)
 	case "/analyze":
 		// Spec 64: Manual AI-Directed Analysis
+		w.SyncWithBroker() // Spec 68 JIT
 		return w.handleAnalyzeCommand(parts)
 	case "/update":
 		return w.handleUpdateCommand(parts)

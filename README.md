@@ -29,8 +29,12 @@ It is designed for traders who want the precision of algorithmic execution (trai
 - **Cost-Basis Truth**: Uses the broker's `AvgEntryPrice` to ensure P/L calc matches your official dashboard.
 
 ### ⚙️ HFT-Grade Execution Reliability
+- **Just-In-Time (JIT) Sync**: Automatically reconciles with the broker (Alpaca) immediately before critical actions (`/buy`, `/status`, `/analyze`) to ensure budget decisions are based on the absolute latest data (Spec 68).
 - **Sequential Clearance**: Automatically cleans up "Zombie Orders" before placing new ones to prevent position locking.
 - **Validation Loop**: Confirms trades are actually `Filled` on the exchange.
+
+### 💰 Fiscal Discipline
+- **Dynamic Budgeting**: Strict adherence to a logic of `Available = min(BuyingPower, FiscalLimit - Exposure)`. This prevents the bot from ever exceeding your global risk cap ($300 default) regardless of broker buying power (Spec 69).
 
 ---
 
