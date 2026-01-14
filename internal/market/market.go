@@ -26,6 +26,7 @@ type MarketProvider interface {
 	GetBuyingPower() (decimal.Decimal, error)
 	GetBars(ticker string, limit int) ([]marketdata.Bar, error)
 	GetPortfolioHistory(period string, timeframe string) (*alpaca.PortfolioHistory, error)
+	GetAccount() (*alpaca.Account, error)
 }
 
 // AlpacaProvider is a concrete implementation of MarketProvider for the Alpaca API.
@@ -139,4 +140,9 @@ func (a *AlpacaProvider) GetPortfolioHistory(period string, timeframe string) (*
 		Period:    period,
 		TimeFrame: alpaca.TimeFrame(timeframe),
 	})
+}
+
+// GetAccount fetches the full account object.
+func (a *AlpacaProvider) GetAccount() (*alpaca.Account, error) {
+	return a.tradeClient.GetAccount()
 }

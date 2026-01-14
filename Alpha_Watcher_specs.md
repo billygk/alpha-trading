@@ -634,3 +634,16 @@ update README.md file with relevant information.
 update .env file with sample MAX_STAGNATION_HOURS value.
 update project_log.md file.
 
+## 68. Just-In-Time (JIT) Broker Reconciliation
+Objective: Eliminate discrepancies between Alpaca reality and local state regarding budget and positions.
+Logic: The /status, /analyze, and /buy commands must trigger an internal syncWithBroker() call BEFORE processing logic. This fetches fresh GetAccount() (Buying Power/Equity) and ListPositions() from Alpaca.
+
+## 69. Dynamic Budget Calculation
+Implementation: AvailableBudget MUST be calculated as min(Alpaca_Buying_Power, FiscalLimit - CurrentTotalExposure). This ensures the bot respects both the broker's physical cash limits and the user's strategic $300 cap.
+
+## 70. Budget-Aware Payload Construction
+Implementation: When preparing the AI payload (Spec 58/64), the bot must use an in-memory Snapshot object populated by the Spec 68 JIT sync. This ensures the AI sees the "True" available budget, accounting for any manual trades performed outside the bot.
+
+## 71. Strategic Exit Instruction (AI)
+Implementation: If AvailableBudget < (Latest_Price * 1), the AI is instructed to return HOLD unless it identifies a viable Rotation (Spec 67).
+

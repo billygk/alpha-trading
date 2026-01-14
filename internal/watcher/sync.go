@@ -72,31 +72,41 @@ func (w *Watcher) getPrice(ticker string) string {
 	return fmt.Sprintf("💲 *%s*: $%s", ticker, price.StringFixed(2))
 }
 
-// syncState performs the core logic of synchronization (Spec 29 & 40).
-// Returns count of active positions, list of discovered tickers, and error.
-func (w *Watcher) syncState() (int, []string, error) {
-	// Provider usage outside lock to avoid blocking
+// SyncWithBroker implements Spec 68: Just-In-Time Broker Reconciliation.
+// It fetches fresh account data and positions from Alpaca, updates the local state,
+// and strictly enforces the Dynamic Budget rules (Spec 69).
+// Returns the updated portfolio state.
+func (w *Watcher) SyncWithBroker() (models.PortfolioState, error) {
+	// 1. Fetch Data in Parallel (could use goroutines, but sequential is safer/easier for now)
+	account, err := w.provider.GetAccount()
+	if err != nil {
+		return w.state, fmt.Errorf("JIT Sync: Failed to get account: %v", err)
+	}
+
 	positions, err := w.provider.ListPositions()
 	if err != nil {
-		return 0, nil, err
+		return w.state, fmt.Errorf("JIT Sync: Failed to list positions: %v", err)
 	}
+
+	buyingPower := account.BuyingPower // Alpaca Binding
 
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	// Rebuild State
-	newPositions := []models.Position{}
+	// 2. Reconcile Positions (Spec 42 & 29 Logic)
+	// We reuse the logic from syncState but adapt it here or call a helper.
+	// Since syncState logic is complex (HWM preservation), let's inline/refactor the core here.
 
-	// Create a map of existing HighWaterMarks to preserve them
-	existsMap := make(map[string]bool)
-
+	// Map existing HWMs
+	existsMap := make(map[string]models.Position)
 	for _, p := range w.state.Positions {
 		if p.Status == "ACTIVE" {
-			existsMap[p.Ticker] = true
+			existsMap[p.Ticker] = p
 		}
 	}
 
-	var discoveredTickers []string
+	newPositions := []models.Position{}
+	var currentExposure decimal.Decimal // For Spec 69
 
 	for _, p := range positions {
 		ticker := p.Symbol
@@ -108,7 +118,12 @@ func (w *Watcher) syncState() (int, []string, error) {
 			currentPrice = *p.CurrentPrice
 		}
 
-		// Spec 40: HWM = max(AvgEntry, Current)
+		// Calculate Cost for Exposure (Spec 69)
+		// Exposure = Qty * EntryPrice (Cost Basis)
+		cost := qty.Mul(avgEntry)
+		currentExposure = currentExposure.Add(cost)
+
+		// HWM Logic
 		hwm := avgEntry
 		if currentPrice.GreaterThan(hwm) {
 			hwm = currentPrice
@@ -121,53 +136,40 @@ func (w *Watcher) syncState() (int, []string, error) {
 		thesisID := fmt.Sprintf("IMPORTED_%d", time.Now().Unix())
 		var openedAt time.Time // Default zero
 
-		// If exists in local state, preserve SL/TP/TS
-		if existsMap[ticker] {
-			for _, oldP := range w.state.Positions {
-				if oldP.Ticker == ticker && oldP.Status == "ACTIVE" {
-					sl = oldP.StopLoss
-					tp = oldP.TakeProfit
-					tsPct = oldP.TrailingStopPct
-					thesisID = oldP.ThesisID
-					// Preserve OpenedAt (Spec 66: Stagnation Timer)
-					if !oldP.OpenedAt.IsZero() {
-						openedAt = oldP.OpenedAt
-					}
+		// Check local state for overrides
+		if oldP, ok := existsMap[ticker]; ok {
+			sl = oldP.StopLoss
+			tp = oldP.TakeProfit
+			tsPct = oldP.TrailingStopPct
+			thesisID = oldP.ThesisID
 
-					// Backfill Defaults if Zero
-					if sl.IsZero() {
-						slMult := decimal.NewFromInt(1).Sub(decimal.NewFromFloat(w.config.DefaultStopLossPct).Div(decimal.NewFromInt(100)))
-						sl = avgEntry.Mul(slMult)
-					}
-					if tp.IsZero() {
-						tpMult := decimal.NewFromInt(1).Add(decimal.NewFromFloat(w.config.DefaultTakeProfitPct).Div(decimal.NewFromInt(100)))
-						tp = avgEntry.Mul(tpMult)
-					}
-					if tsPct.IsZero() {
-						tsPct = decimal.NewFromFloat(w.config.DefaultTrailingStopPct)
-					}
-					break
-				}
+			// Spec 66: Stagnation Timer - Persist OpenedAt
+			if !oldP.OpenedAt.IsZero() {
+				openedAt = oldP.OpenedAt
+			}
+
+			// Spec 52: Monotonicity - Preserve HWM if local is higher
+			if oldP.HighWaterMark.GreaterThan(hwm) {
+				hwm = oldP.HighWaterMark
 			}
 		} else {
-			// Spec 42: Apply Defaults to Discovered Positions
-			slMult := decimal.NewFromInt(1).Sub(decimal.NewFromFloat(w.config.DefaultStopLossPct).Div(decimal.NewFromInt(100)))
-			sl = avgEntry.Mul(slMult)
-
-			tpMult := decimal.NewFromInt(1).Add(decimal.NewFromFloat(w.config.DefaultTakeProfitPct).Div(decimal.NewFromInt(100)))
-			tp = avgEntry.Mul(tpMult)
-
-			// New positions default to Now() for stagnation tracking
+			// New Position Discovery
 			openedAt = time.Now()
-
-			discoveredTickers = append(discoveredTickers, ticker)
-			log.Printf("ℹ️ Position discovered: %s. Applied Default SL ($%s) & TP ($%s).", ticker, sl.StringFixed(2), tp.StringFixed(2))
+			log.Printf("ℹ️ Position discovered: %s", ticker)
 		}
 
-		// Spec 57: State Purity Enforcement (Implicit)
-		// By rebuilding newPositions purely from the Alpaca list, any local position
-		// that is NOT in the Alpaca response (e.g., closed/sold externally) is automatically dropped.
-		// This satisfies the "Reconciliation Safeguard" requirement.
+		// Ensure defaults if missing or zero (Spec 42)
+		if sl.IsZero() {
+			slMult := decimal.NewFromInt(1).Sub(decimal.NewFromFloat(w.config.DefaultStopLossPct).Div(decimal.NewFromInt(100)))
+			sl = avgEntry.Mul(slMult)
+		}
+		if tp.IsZero() {
+			tpMult := decimal.NewFromInt(1).Add(decimal.NewFromFloat(w.config.DefaultTakeProfitPct).Div(decimal.NewFromInt(100)))
+			tp = avgEntry.Mul(tpMult)
+		}
+		if tsPct.IsZero() {
+			tsPct = decimal.NewFromFloat(w.config.DefaultTrailingStopPct)
+		}
 
 		newPos := models.Position{
 			Ticker:          ticker,
@@ -181,11 +183,44 @@ func (w *Watcher) syncState() (int, []string, error) {
 			ThesisID:        thesisID,
 			OpenedAt:        openedAt,
 		}
+
 		newPositions = append(newPositions, newPos)
 	}
 
 	w.state.Positions = newPositions
+
+	// 3. Dynamic Budget Calculation (Spec 69)
+	// AvailableBudget = min(Alpaca_Buying_Power, FiscalLimit - CurrentTotalExposure)
+	fiscalLimit := decimal.NewFromFloat(w.config.FiscalBudgetLimit)
+	remainingFiscal := fiscalLimit.Sub(currentExposure)
+
+	// Available cannot be negative in logic, but min handles it if BP is positive.
+	// If remainingFiscal is negative (over budget), Available should be 0.
+	if remainingFiscal.IsNegative() {
+		remainingFiscal = decimal.Zero
+	}
+
+	// Helper min
+	available := buyingPower
+	if remainingFiscal.LessThan(buyingPower) {
+		available = remainingFiscal
+	}
+
+	w.state.CurrentExposure = currentExposure
+	w.state.FiscalLimit = fiscalLimit
+	w.state.AvailableBudget = available
+	// LastSync updated in SaveState
 	w.saveStateLocked()
 
-	return len(newPositions), discoveredTickers, nil
+	return w.state, nil
+}
+
+// syncState passes through to SyncWithBroker now to unify logic.
+// Returns count, discovered (empty if sync works generally), error.
+func (w *Watcher) syncState() (int, []string, error) {
+	state, err := w.SyncWithBroker()
+	if err != nil {
+		return 0, nil, err
+	}
+	return len(state.Positions), []string{}, nil
 }

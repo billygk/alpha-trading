@@ -13,8 +13,6 @@ import (
 	"alpha_trading/internal/models"
 	"alpha_trading/internal/storage"
 	"alpha_trading/internal/telegram"
-
-	"github.com/shopspring/decimal"
 )
 
 var startTime = time.Now()
@@ -233,6 +231,11 @@ func (w *Watcher) runAIAnalysis(ticker string, isManual bool) {
 }
 
 func (w *Watcher) buildPortfolioSnapshot(ticker string) (*ai.PortfolioSnapshot, error) {
+	// Spec 70: Use JIT Sync to populate budget/exposure
+	if _, err := w.SyncWithBroker(); err != nil {
+		log.Printf("Snapshot Warning: JIT Sync failed: %v", err)
+	}
+
 	w.mu.RLock()
 	defer w.mu.RUnlock()
 
@@ -240,7 +243,7 @@ func (w *Watcher) buildPortfolioSnapshot(ticker string) (*ai.PortfolioSnapshot, 
 	if err != nil {
 		return nil, err
 	}
-	bp, err := w.provider.GetBuyingPower() // Assuming this method exists in provider based on interface check
+	bp, err := w.provider.GetBuyingPower()
 	if err != nil {
 		return nil, err
 	}
@@ -256,25 +259,14 @@ func (w *Watcher) buildPortfolioSnapshot(ticker string) (*ai.PortfolioSnapshot, 
 		marketContext = fmt.Sprintf("Analysis Focus: %s", ticker)
 	}
 
-	// Spec 65: Calculate Available Budget
-	var currentExposure decimal.Decimal
-	for _, p := range w.state.Positions {
-		if p.Status == "ACTIVE" {
-			cost := p.Quantity.Mul(p.EntryPrice)
-			currentExposure = currentExposure.Add(cost)
-		}
-	}
-	fiscalLimit := decimal.NewFromFloat(w.config.FiscalBudgetLimit)
-	availableBudget := fiscalLimit.Sub(currentExposure)
-
 	return &ai.PortfolioSnapshot{
 		Timestamp:       time.Now().Format(time.RFC3339),
 		MarketStatus:    status,
 		Capital:         bp,
 		Equity:          equity,
-		FiscalLimit:     fiscalLimit,
-		AvailableBudget: availableBudget,
-		CurrentExposure: currentExposure,
+		FiscalLimit:     w.state.FiscalLimit,
+		AvailableBudget: w.state.AvailableBudget,
+		CurrentExposure: w.state.CurrentExposure,
 		Positions:       w.state.Positions,
 		MarketContext:   marketContext,
 	}, nil

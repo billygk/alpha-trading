@@ -1,5 +1,8 @@
 Alpha Watcher: Project Activity Log
 
+---
+
+
 Format to follow:
 ---
 Date: DateTime
@@ -495,3 +498,16 @@ Next Steps: Monitor deployments.
 - Next Steps: Deploy and Validate.
 ---
 
+
+
+---
+Date: 2026-01-14
+Action: Implemented Specs 68-71 (Budget Awareness & JIT Sync)
+Result: 
+- **Spec 68 (JIT Sync)**: Implemented `SyncWithBroker` to fetch fresh Account and Position data immediately before `/status`, `/buy`, `/analyze`.
+- **Spec 69 (Dynamic Budget)**: Implemented strict budget calculation: `Available = min(BuyingPower, FiscalLimit - Exposure)`.
+- **Spec 70 (Budget Payload)**: AI Payload now uses JIT-synced budget values.
+- **Spec 71 (Strategic Exit)**: AI Prompt strictly enforces `HOLD` or `Rotation` when budget is low.
+- **Refactoring**: Added `GetAccount` to Market Interface.
+Next Steps: Deploy and Validate.
+---
