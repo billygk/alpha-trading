@@ -716,3 +716,11 @@ Objective: Ensure multiple orders are processed without "Locked Shares" errors (
 Implementation:
 If a user confirms a "Batch," the bot must execute them sequentially, awaiting the "Filled" or "Accepted" status of Order N before initiating Order N+1.
 
+## 82. Stop-Loss (SL) Monotonicity Guardrail
+Objective: Prevent "SL Decay" where the exit floor is lowered during a price drop.
+Logic:
+Safety Gate: In the /update logic and any AI-directed SL update, the bot MUST validate that New_SL >= Current_SL.
+Enforcement: If New_SL < Current_SL, the bot must reject the update with a [CRITICAL_RISK_VIOLATION] error.
+Exception: The only permitted downward move is if a position is completely closed and re-opened.
+AI Instruction: Update the AI prompt to explicitly state: "You are FORBIDDEN from lowering a Stop Loss once it is set. If the market moves against a position, either HOLD or recommend SELL."
+

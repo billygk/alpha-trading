@@ -544,3 +544,14 @@ Result:
 - **AI Prompt**: Updated instruction to permit "Multi-Action" strategies.
 Next Steps: Monitor Batch Execution reliability.
 ---
+
+---
+Date: 2026-01-15 19:50
+Action: Implemented Spec 82 (SL Monotonicity Guardrail)
+Result: 
+- **Spec 82 (Prevent Decay)**: Implemented strict validation in `/update` logic.
+- **Rules**: New SL must be >= Current SL (unless re-opening).
+- **Enforcement**: Updates that lower the protection floor are now rejected with `[CRITICAL_RISK_VIOLATION]`.
+- **AI Instruction**: Updated prompt to forbid "SL Decay".
+Next Steps: Deploy and Validate.
+---

@@ -61,6 +61,7 @@ It is designed for traders who want the precision of algorithmic execution (trai
 - **Ghost Money Protection**: The bot automatically aligns its budget to `min(Equity, $300)`, ensuring it shrinks operations if the account value drops below the strategic limit (Spec 77).
 - **Aggregate Batch Budget**: AI can propose multiple buys, but the *sum* of their costs is validated against the budget before any execution is permitted (Spec 80).
 - **Sequential Execution**: All batch orders are executed one-by-one with strict verification ("Filled") between steps to prevent race conditions (Spec 81).
+- **SL Monotonicity**: The bot actively FORBIDS lowering a Stop Loss once set ("SL Decay") to prevent risk expansion (Spec 82).
 
 ---
 

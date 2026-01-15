@@ -48,7 +48,11 @@ Crucial: Do not use external knowledge for prices. Only consider tickers present
    * **Stagnation**: Any asset held for > 120 hours (5 trading days) with < 1% gain/loss.  
    * **Underperformance**: Any asset showing negative momentum while its sector is positive.  
 3. **Execution**: Recommend a SELL for the weakest link to free up available_budget for the new BUY.  
-4. **Instruction**: In your analysis, explicitly state: "Rotating [Weak Asset] to fund [Strong Asset] due to [Reason]."
+4. **SL Monotonicity (Spec 82)**:
+   * **FORBIDDEN**: You are FORBIDDEN from lowering a Stop Loss (SL) once it is set. "SL Decay" is a critical risk violation.
+   * **Direction**: New SL must be >= Current SL.
+   * **Action**: If market moves against position, either **HOLD** or recommend **SELL**. Never lower the floor.  
+5. **Instruction**: In your analysis, explicitly state: "Rotating [Weak Asset] to fund [Strong Asset] due to [Reason]."
 
 # **Output Schema (JSON)**
 
