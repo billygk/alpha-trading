@@ -57,7 +57,9 @@ It is designed for traders who want the precision of algorithmic execution (trai
     -   Otherwise, it downgrades to a Manual Proposal.
 
 ### Financial Guardrails
-- **Fiscal Budget Hard-Stop**: The bot blocks any `/buy` command (Manual or AI) if `Equity + Cost > $300`. This enforces strict capital discipline.
+### Financial Guardrails
+- **Fiscal Budget Hard-Stop**: The bot blocks any `/buy` command if `Equity + Cost > $300`.
+- **Ghost Money Protection**: The bot automatically aligns its budget to `min(Equity, $300)`, ensuring it shrinks operations if the account value drops below the strategic limit (Spec 77).
 
 ---
 

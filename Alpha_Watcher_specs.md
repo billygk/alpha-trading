@@ -680,3 +680,20 @@ TP Guardrail: Reject the update if new_tp <= Snapshot Price.
 State Integrity: Only update portfolio_state.json if both gates pass against the real-time Snapshot Price.
 Feedback: If validation fails, the Telegram response must include the Snapshot Price used for the rejection (e.g., "❌ Rejected: New SL $175 is above current price $174.20").
 
+## 77. Budget Reconciliation & The "Ghost Money" Fix
+Objective: Resolve discrepancies between strategic limits (fiscal_limit) and broker reality (Equity).
+Logic:
+Redundancy Review: Do NOT delete fiscal_limit. It remains the strategic "Straitjacket" for the bot.
+Dynamic Re-binding: The AvailableBudget calculation (Spec 69) is further refined.
+The Formula:
+Real_Cap = min(Alpaca_Equity, fiscal_limit)
+AvailableBudget = Real_Cap - CurrentTotalExposure
+AI Sync: The /status and AI Payload must clearly differentiate between "Strategic Limit" ($300) and "Broker Equity" ($296.68).
+Safety Gate: If Alpaca_Equity falls below fiscal_limit due to losses, the bot MUST automatically shrink its "operating theater" to the lower value. This prevents the AI from recommending trades based on "Ghost Money" (the $3.32 gap in the logs).
+
+## 78. Priority Watchlist Price Guardrail (Log Fix)
+Objective: Prevent AI from entering "HOLD" states due to null watchlist data (as seen in logs).
+Implementation:
+Pre-Flight Check: The /analyze and polling loops MUST verify that watchlist_prices is populated before calling the AI.
+Error Handling: If WATCHLIST_TICKERS is defined in .env but watchlist_prices is empty or null in the JSON, the bot must log a [CRITICAL_DATA_MISSING] error and attempt a forced price refresh before proceeding.
+

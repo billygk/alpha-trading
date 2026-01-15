@@ -523,3 +523,13 @@ Result:
 - **Spec 76 (JIT Update Validation)**: Verified `/update` performs fresh price check before intent mutation.
 Next Steps: Deploy and Validate.
 ---
+
+---
+Date: 2026-01-15
+Action: Implemented Specs 77 & 78 (Budget Reconciliation & Watchlist Guardrails)
+Result: 
+- **Spec 77 (Budget Reconciliation)**: Updated `AvailableBudget` logic to `min(Equity, FiscalLimit) - Exposure`. This prevents "Ghost Money" availability when Equity < Limit.
+- **Spec 78 (Watchlist Guardrail)**: Added "Pre-Flight Check" in `buildPortfolioSnapshot` to log CRITICAL error if watchlist data is missing despite being configured.
+- **Documentation**: Updated `README.md` and internal docs.
+Next Steps: Deploy and Validate.
+---

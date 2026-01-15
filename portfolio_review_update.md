@@ -70,6 +70,8 @@ You must ALWAYS return this valid JSON structure:
 "risk_assessment": "LOW | MEDIUM | HIGH"  
 }
 
+only return one action at a time, but mention the other actions you considered in the analysis in analysis field.
+
 # **Commands syntax**
    /buy <ticker> <qty> [sl] [tp]
    /sell <ticker> <qty>
