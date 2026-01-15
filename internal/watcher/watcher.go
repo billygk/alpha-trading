@@ -269,5 +269,6 @@ func (w *Watcher) buildPortfolioSnapshot(ticker string) (*ai.PortfolioSnapshot, 
 		CurrentExposure: w.state.CurrentExposure,
 		Positions:       w.state.Positions,
 		MarketContext:   marketContext,
+		WatchlistPrices: w.state.WatchlistPrices, // Spec 74
 	}, nil
 }

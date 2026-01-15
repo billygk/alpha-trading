@@ -647,3 +647,36 @@ Implementation: When preparing the AI payload (Spec 58/64), the bot must use an 
 ## 71. Strategic Exit Instruction (AI)
 Implementation: If AvailableBudget < (Latest_Price * 1), the AI is instructed to return HOLD unless it identifies a viable Rotation (Spec 67).
 
+## 72. Watchlist Price Grounding (Env & State)
+Objective: Provide the AI with real-time price context for "Priority Watchlist" assets.
+Implementation:
+Configuration: Add WATCHLIST_TICKERS to .env (Comma-separated list, e.g., VRT,PLTR,BTC).
+State: Add a watchlist_prices map (ticker: price) to the PortfolioState struct.
+Refresh Logic: During the Spec 68 JIT Sync, the bot MUST fetch the LatestTrade for all tickers in WATCHLIST_TICKERS and update the local state.
+
+## 73. Atomic AI Recommendation (The "Single Action" Rule)
+Objective: Prevent the AI from proposing multiple trades that collectively violate the budget.
+Logic:
+Constraint: The AI is strictly limited to ONE primary recommendation per review cycle (BUY, SELL, or UPDATE).
+Exception: A "Rotation" (SELL A + BUY B) is treated as a single atomic recommendation.
+Instruction: Update the AI System Instruction to explicitly forbid multi-buy lists (e.g., "BUY VRT and BUY PLTR") to prevent budget race conditions.
+
+## 74. Price-Aware Payload (Context Injection)
+Implementation:
+When generating the JSON payload for Gemini, the Snapshot must include the watchlist_prices map.
+The prompt must instruct the AI: "Use the provided watchlist_prices to calculate the total cost of your recommendation. Your total proposed cost MUST be < available_budget."
+
+## 75. Batch Order Safety Gate
+Objective: Hard-stop any AI command that contains multiple /buy strings if they are not part of a validated Rotation.
+Logic: If the action_command from Spec 59 contains more than one /buy instruction, the bot must reject it and log: [AI_LOGIC_ERROR] Multiple buy orders suggested without rotation.
+
+## 76. Broker-Synchronized Intent Mutation (/update)
+Objective: Ensure manual risk parameter updates are validated against real-time market reality.
+Implementation:
+JIT Price Fetch: Before validating any /update <ticker> <sl> <tp> command, the bot MUST perform a fresh Alpaca REST call (GetLatestTrade) for the ticker.
+Validation Snapshot: Use the price from the JIT fetch (the "Snapshot Price") to evaluate the Safety Gates defined in Spec 51.
+SL Guardrail: Reject the update if new_sl >= Snapshot Price.
+TP Guardrail: Reject the update if new_tp <= Snapshot Price.
+State Integrity: Only update portfolio_state.json if both gates pass against the real-time Snapshot Price.
+Feedback: If validation fails, the Telegram response must include the Snapshot Price used for the rejection (e.g., "❌ Rejected: New SL $175 is above current price $174.20").
+

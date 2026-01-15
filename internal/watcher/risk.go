@@ -280,6 +280,17 @@ func (w *Watcher) handleAIResult(analysis *ai.AIAnalysis, snapshot *ai.Portfolio
 		return
 	}
 
+	// Spec 75: Batch Order Safety Gate
+	// Hard-stop any AI command that contains multiple /buy strings if they are not part of a validated Rotation.
+	// Since Rotation is "SELL + BUY" (one buy), any count > 1 is forbidden.
+	if strings.Count(analysis.ActionCommand, "/buy") > 1 {
+		log.Printf("[AI_LOGIC_ERROR] Multiple buy orders detected in command: %s. Rejected per Spec 75.", analysis.ActionCommand)
+		if isManual {
+			telegram.Notify(fmt.Sprintf("❌ AI Error: Multiple buy orders rejected (Spec 75).\nCommand: `%s`", analysis.ActionCommand))
+		}
+		return
+	}
+
 	ticker := ""
 	parts := strings.Fields(analysis.ActionCommand)
 	if len(parts) > 1 {

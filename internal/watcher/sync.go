@@ -209,6 +209,30 @@ func (w *Watcher) SyncWithBroker() (models.PortfolioState, error) {
 	w.state.CurrentExposure = currentExposure
 	w.state.FiscalLimit = fiscalLimit
 	w.state.AvailableBudget = available
+
+	// Spec 72: Watchlist Price Grounding (Env & State)
+	// Refresh Logic: Fetch LatestTrade for all tickers in WATCHLIST_TICKERS and update the local state.
+	// We do this AFTER reconciling positions, but before saving.
+	if len(w.config.WatchlistTickers) > 0 {
+		if w.state.WatchlistPrices == nil {
+			w.state.WatchlistPrices = make(map[string]float64)
+		}
+		for _, ticker := range w.config.WatchlistTickers {
+			ticker = strings.ToUpper(strings.TrimSpace(ticker))
+			if ticker == "" {
+				continue
+			}
+			// Use GetPrice (returns decimal) -> float64
+			priceDec, err := w.provider.GetPrice(ticker)
+			if err != nil {
+				log.Printf("Watchlist Warning: Could not fetch price for %s: %v", ticker, err)
+				continue
+			}
+			f, _ := priceDec.Float64()
+			w.state.WatchlistPrices[ticker] = f
+		}
+	}
+
 	// LastSync updated in SaveState
 	w.saveStateLocked()
 
