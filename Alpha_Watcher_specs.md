@@ -697,3 +697,22 @@ Implementation:
 Pre-Flight Check: The /analyze and polling loops MUST verify that watchlist_prices is populated before calling the AI.
 Error Handling: If WATCHLIST_TICKERS is defined in .env but watchlist_prices is empty or null in the JSON, the bot must log a [CRITICAL_DATA_MISSING] error and attempt a forced price refresh before proceeding.
 
+## 79. Decommission of Spec 75 (Multi-Buy Permission)
+Objective: Allow the AI to suggest multiple entries in a single review cycle to maximize capital deployment efficiency.
+Logic:
+Decommission: Spec 75 (Batch Order Safety Gate) is hereby marked as OBSOLETE.
+Permission: The AI is now permitted to return multiple /buy commands in its action_command field.
+UI Requirement: The Telegram handler must parse the action_command string (e.g., delimited by ;) and present each order as an independent confirmation card or a single "Batch Execution" card.
+
+## 80. Aggregate Budget Validation (Batch Safety)
+Objective: Prevent partial execution failures when multiple trades are proposed.
+Implementation:
+Summation Logic: Before presenting any [✅ EXECUTE] buttons for a multi-order recommendation, the bot MUST calculate the total aggregate cost: Total_Batch_Cost = Σ(qty_i * price_i).
+Hard-Stop: If Total_Batch_Cost > AvailableBudget, the bot must reject the entire recommendation with: "❌ Batch Rejection: Total cost ${{total}} exceeds available budget ${{budget}}."
+Verification: This check must use fresh prices (Spec 72) to ensure math remains valid at the moment of proposal.
+
+## 81. Sequential Execution Threading
+Objective: Ensure multiple orders are processed without "Locked Shares" errors (Spec 54).
+Implementation:
+If a user confirms a "Batch," the bot must execute them sequentially, awaiting the "Filled" or "Accepted" status of Order N before initiating Order N+1.
+

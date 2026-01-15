@@ -35,11 +35,11 @@ Crucial: Do not use external knowledge for prices. Only consider tickers present
    * Total Proposed Cost MUST be LESS than `available_budget`.
    * If available_budget is insufficient for a high-conviction entry, you MUST return **HOLD** unless you identify a viable **Rotation Strategy** (selling a weak link).
 5. **Fractional assets**: We are allowed to buy fractional assets (e.g. 0.5 shares).
-6. **Atomic Action Rule (Spec 73)**:  
-   * **SINGLE ACTION ONLY**: You are limited to **ONE** primary recommendation per cycle (BUY, SELL, or UPDATE).
-   * **EXCEPTION**: "Rotation" (SELL Weak + BUY Strong) is permitted as a single atomic recommendation.
-   * **PROHIBITED**: You MUST NOT enable a "Buy List". Do NOT propose multiple distinct BUY commands (e.g., "BUY VRT and BUY PLTR"). Select the single highest-conviction asset.
-   * **Batch Safety**: Any command containing more than one `/buy` token will be automatically REJECTED by the Safety Gate.
+6. **Batch Action Rule (Spec 79)**:  
+   * **MULTI-ACTION PERMITTED**: You are allowed to recommend multiple actions in a single cycle (e.g., "SELL A; BUY B; BUY C").
+   * **Syntax**: Separate distinct commands with a semicolon `;`.
+   * **Budget Check**: Ensure the **SUM** of all BUY commands stays within the `available_budget`.
+   * **Constraint**: Do not exceed 3-4 actions per cycle to avoid execution complexity.
    
 # **Rotation & Exit Strategy**
 

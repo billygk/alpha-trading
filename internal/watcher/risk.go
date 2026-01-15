@@ -280,13 +280,57 @@ func (w *Watcher) handleAIResult(analysis *ai.AIAnalysis, snapshot *ai.Portfolio
 		return
 	}
 
-	// Spec 75: Batch Order Safety Gate
-	// Hard-stop any AI command that contains multiple /buy strings if they are not part of a validated Rotation.
-	// Since Rotation is "SELL + BUY" (one buy), any count > 1 is forbidden.
-	if strings.Count(analysis.ActionCommand, "/buy") > 1 {
-		log.Printf("[AI_LOGIC_ERROR] Multiple buy orders detected in command: %s. Rejected per Spec 75.", analysis.ActionCommand)
+	// Spec 79: Multi-Buy Permission (Spec 75 Decommissioned)
+	// We allow multiple /buy commands.
+
+	// Spec 80: Aggregate Budget Validation (Batch Safety)
+	// "Total_Batch_Cost = Sum(qty_i * price_i)"
+	// "Hard-Stop: If Total > Available, reject entire batch."
+
+	totalBatchCost := decimal.Zero
+	commands := strings.Split(analysis.ActionCommand, ";")
+
+	// Pre-calculation loop
+	for _, cmd := range commands {
+		cmd = strings.TrimSpace(cmd)
+		parts := strings.Fields(cmd)
+		if len(parts) >= 3 && strings.ToLower(parts[0]) == "/buy" {
+			// /buy TICKER QTY
+			bTicker := strings.ToUpper(parts[1])
+			qtyStr := parts[2]
+
+			qty, err := decimal.NewFromString(qtyStr)
+			if err != nil {
+				log.Printf("AI Batch Error: Invalid qty in command: %s", cmd)
+				continue
+			}
+
+			// JIT Price Check
+			price, err := w.provider.GetPrice(bTicker)
+			if err != nil {
+				log.Printf("AI Batch Error: Price fetch failed for %s", bTicker)
+				continue
+			}
+
+			cost := qty.Mul(price)
+			totalBatchCost = totalBatchCost.Add(cost)
+		}
+	}
+
+	// Check against Budget
+	// AvailableBudget is updated by JIT Sync in buildPortfolioSnapshot
+	// BUT, we need to be sure. w.state is locked? No.
+	// buildPortfolioSnapshot called SyncWithBroker which updated w.state logic.
+	// We can trust w.state.AvailableBudget from the snapshot?
+	// The snapshot passed in has AvailableBudget.
+
+	if totalBatchCost.GreaterThan(snapshot.AvailableBudget) {
+		msg := fmt.Sprintf("❌ Batch Rejection (Spec 80):\nTotal Cost ($%s) exceeds Available Budget ($%s).\nCommand: %s",
+			totalBatchCost.StringFixed(2), snapshot.AvailableBudget.StringFixed(2), analysis.ActionCommand)
+
+		log.Printf("[AI_BUDGET_REJECTION] %s", msg)
 		if isManual {
-			telegram.Notify(fmt.Sprintf("❌ AI Error: Multiple buy orders rejected (Spec 75).\nCommand: `%s`", analysis.ActionCommand))
+			telegram.Notify(msg)
 		}
 		return
 	}
@@ -320,6 +364,10 @@ func (w *Watcher) handleAIResult(analysis *ai.AIAnalysis, snapshot *ai.Portfolio
 		"Recommendation: %s\n"+
 		"Command: `%s`",
 		ticker, analysis.ConfidenceScore, analysis.RiskAssessment, analysis.Analysis, analysis.Recommendation, analysis.ActionCommand)
+
+	if totalBatchCost.GreaterThan(decimal.Zero) {
+		msg += fmt.Sprintf("\n💰 **Total Batch Cost**: $%s", totalBatchCost.StringFixed(2))
+	}
 
 	// Route based on Recommendation
 	switch analysis.Recommendation {

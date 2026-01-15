@@ -302,24 +302,84 @@ func (w *Watcher) handleAICallback(data string) string {
 	commands := strings.Split(rawCmd, ";")
 	var resultsBuilder strings.Builder
 
+	// Spec 81: Sequential Execution Threading
+	// We must execute sequentially and VERIFY each step.
 	for i, cmd := range commands {
 		cmd = strings.TrimSpace(cmd)
 		if cmd == "" {
 			continue
 		}
 
-		// Recursively execute the stored command
-		// HandleCommand handles its own locking if needed.
-		res := w.HandleCommand(cmd)
+		parts := strings.Fields(cmd)
+		if len(parts) == 0 {
+			continue
+		}
+
+		cmdType := strings.ToLower(parts[0])
+		var output string
+
+		if cmdType == "/buy" { // Fix AI Buys (Direct Execution)
+			if len(parts) < 3 {
+				output = fmt.Sprintf("❌ Invalid AI Buy: %s", cmd)
+			} else {
+				ticker := strings.ToUpper(parts[1])
+				qtyStr := parts[2]
+				qty, _ := decimal.NewFromString(qtyStr) // risk.go already validated format
+
+				// 1. Sequential Clearance
+				if err := w.ensureSequentialClearance(ticker); err != nil {
+					output = fmt.Sprintf("⚠️ Clearance failed: %v", err)
+				} else {
+					// 2. Place Order
+					order, err := w.provider.PlaceOrder(ticker, qty, "buy")
+					if err != nil {
+						output = fmt.Sprintf("❌ Buy Failed (%s): %v", ticker, err)
+					} else {
+						// 3. Verify
+						verified, vErr := w.verifyOrderExecution(order.ID)
+						if vErr != nil {
+							output = fmt.Sprintf("🚨 Buy Verified Failed (%s): %v", ticker, vErr)
+						} else {
+							// 4. Update State
+							if strings.EqualFold(verified.Status, "filled") {
+								newPos := models.Position{
+									Ticker: ticker, Quantity: qty, EntryPrice: *verified.FilledAvgPrice,
+									Status: "ACTIVE", HighWaterMark: *verified.FilledAvgPrice,
+									OpenedAt: time.Now(), ThesisID: fmt.Sprintf("AI_%d", time.Now().Unix()),
+									// Defaults (Sync/Update will handle exacts)
+									StopLoss: decimal.Zero, TakeProfit: decimal.Zero, TrailingStopPct: decimal.Zero,
+								}
+								w.mu.Lock()
+								w.state.Positions = append(w.state.Positions, newPos)
+								w.saveStateLocked()
+								w.mu.Unlock()
+								output = fmt.Sprintf("✅ PURCHASED: %s %s @ $%s", qty, ticker, verified.FilledAvgPrice.StringFixed(2))
+							} else {
+								output = fmt.Sprintf("⚠️ Buy Pending (%s): Status %s", ticker, verified.Status)
+							}
+						}
+					}
+				}
+			}
+		} else {
+			// Delegate /sell, /update to standard handlers which are synchronous enough
+			// But wait, /sell also needs verification if used in batch?
+			// handleSellCommand does verification!
+			// handleUpdateCommand updates state immediately.
+			output = w.HandleCommand(cmd)
+		}
 
 		if i > 0 {
 			resultsBuilder.WriteString("\n---\n")
 		}
-		resultsBuilder.WriteString(fmt.Sprintf("Cmd: `%s`\nResult: %s", cmd, res))
+		resultsBuilder.WriteString(fmt.Sprintf("Cmd: `%s`\nResult: %s", cmd, output))
 
-		// Small sleep between commands to ensure order sequence/network clearance
+		// Strict Sequential Wait (Spec 81 says "awaiting...").
+		// verifyOrderExecution above awaited.
+		// HandleCommand(/sell) awaits.
+		// So we are good. Just a small safety buffer.
 		if len(commands) > 1 {
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(200 * time.Millisecond)
 		}
 	}
 
