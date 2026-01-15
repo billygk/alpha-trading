@@ -1,7 +1,6 @@
 # Alpha Watcher
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg) ![Go Version](https://img.shields.io/badge/go-1.22+-00ADD8.svg)
-
+![License](https://img.shields.io/badge/license-MIT-blue.svg) ![Go Version](https://img.shields.io/badge/go-1.22+-00ADD8.svg)|[![Release Build](https://github.com/billygk/alpha-trading/actions/workflows/release.yml/badge.svg)](https://github.com/billygk/alpha-trading/actions/workflows/release.yml)
 **Alpha Watcher** is a high-availability, attended-automation trading supervisor written in Go. It acts as a bridge between your brokerage (Alpaca) and your mobile device (Telegram), providing real-time risk management, interactive trade execution, and automated state synchronization.
 
 It is designed for traders who want the precision of algorithmic execution (trailing stops, instant calculations) with the safety of human confirmation (`Confirm-to-Trade`).
