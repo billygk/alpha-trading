@@ -16,6 +16,7 @@ var CetLoc = time.FixedZone("CET", 3600)
 // Config holds all tweakable application parameters.
 // Values are loaded from environment variables or set to sensible defaults.
 type Config struct {
+	Version                     string  // Application version (read from file)
 	LogLevel                    string  // Environment: WATCHER_LOG_LEVEL
 	MaxLogSizeMB                int64   // Environment: WATCHER_MAX_LOG_SIZE_MB
 	MaxLogBackups               int     // Environment: WATCHER_MAX_LOG_BACKUPS

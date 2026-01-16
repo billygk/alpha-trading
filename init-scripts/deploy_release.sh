@@ -34,10 +34,19 @@ fi
 # We query the Release API to find the internal 'id' GitHub assigned to the binary.
 echo "Searching for Asset ID for $ASSET_NAME in $OWNER/$REPO..."
 
-ASSET_ID=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
+# Fetch the full JSON first so we can extract the tag name if needed
+RESPONSE_JSON=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
   -H "Accept: application/vnd.github+json" \
-  "$API_URL" | \
-  jq -r ".assets[] | select(.name == \"$ASSET_NAME\") | .id")
+  "$API_URL")
+
+if [ -z "$TAG" ]; then
+  DETECTED_TAG=$(echo "$RESPONSE_JSON" | jq -r .tag_name)
+  echo "Found latest tag: $DETECTED_TAG"
+  echo "$DETECTED_TAG" > version.latest
+  echo "Saved tag to version.latest"
+fi
+
+ASSET_ID=$(echo "$RESPONSE_JSON" | jq -r ".assets[] | select(.name == \"$ASSET_NAME\") | .id")
 
 # 2. Validation
 if [ "$ASSET_ID" == "null" ] || [ -z "$ASSET_ID" ]; then

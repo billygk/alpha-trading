@@ -16,12 +16,14 @@ import (
 )
 
 const LogFile = "watcher.log"
+const VersionFile = "version.latest"
 
 // main is the entry point of the application.
 func main() {
 	// 1. Initialization
 	// Load configuration first to get logger settings
 	cfg := config.Load()
+	cfg.Version = readVersion()
 
 	// Setup logging with configured values
 	logger.Setup(LogFile, cfg.MaxLogSizeMB, cfg.MaxLogBackups)
@@ -57,7 +59,7 @@ func main() {
 		cancel() // Cancel context to stop main loop
 	}()
 
-	log.Println("Alpha Watcher v2.1.0-Polling Initialized")
+	log.Printf("Alpha Watcher %s Initialized", cfg.Version)
 	log.Printf("Polling Interval: %d mins (Fallback)", cfg.PollIntervalMins)
 
 	// 5. Main Loop
@@ -81,9 +83,11 @@ func main() {
 	}
 }
 
-// --- LOGGING ---
-
-// --- LOGGING ---
-
-// setupLogging is replaced by logger.Setup from internal/logger package
-// The logger package now handles file rotation (5MB limit, 3 backups)
+func readVersion() string {
+	// read version from VersionFile file
+	version, err := os.ReadFile(VersionFile)
+	if err != nil {
+		return "v0.0.0-dev"
+	}
+	return string(version)
+}
