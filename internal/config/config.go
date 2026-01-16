@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -16,20 +17,21 @@ var CetLoc = time.FixedZone("CET", 3600)
 // Config holds all tweakable application parameters.
 // Values are loaded from environment variables or set to sensible defaults.
 type Config struct {
-	Version                     string  // Application version (read from file)
-	LogLevel                    string  // Environment: WATCHER_LOG_LEVEL
-	MaxLogSizeMB                int64   // Environment: WATCHER_MAX_LOG_SIZE_MB
-	MaxLogBackups               int     // Environment: WATCHER_MAX_LOG_BACKUPS
-	PollIntervalMins            int     // Environment: WATCHER_POLL_INTERVAL
-	ConfirmationTTLSec          int     // Environment: CONFIRMATION_TTL_SEC
-	ConfirmationMaxDeviationPct float64 // Environment: CONFIRMATION_MAX_DEVIATION_PCT
-	DefaultTakeProfitPct        float64 // Environment: DEFAULT_TAKE_PROFIT_PCT
-	DefaultStopLossPct          float64 // Environment: DEFAULT_STOP_LOSS_PCT
-	DefaultTrailingStopPct      float64 // Environment: DEFAULT_TRAILING_STOP_PCT
-	AutoStatusEnabled           bool    // Environment: AUTO_STATUS_ENABLED
-	FiscalBudgetLimit           float64 // Environment: FISCAL_BUDGET_LIMIT
-	MaxStagnationHours          int     // Environment: MAX_STAGNATION_HOURS (Spec 66)
-	GeminiAPIKey                string  // Environment: GEMINI_API_KEY
+	Version                     string   // Application version (read from file)
+	LogLevel                    string   // Environment: WATCHER_LOG_LEVEL
+	MaxLogSizeMB                int64    // Environment: WATCHER_MAX_LOG_SIZE_MB
+	MaxLogBackups               int      // Environment: WATCHER_MAX_LOG_BACKUPS
+	PollIntervalMins            int      // Environment: WATCHER_POLL_INTERVAL
+	ConfirmationTTLSec          int      // Environment: CONFIRMATION_TTL_SEC
+	ConfirmationMaxDeviationPct float64  // Environment: CONFIRMATION_MAX_DEVIATION_PCT
+	DefaultTakeProfitPct        float64  // Environment: DEFAULT_TAKE_PROFIT_PCT
+	DefaultStopLossPct          float64  // Environment: DEFAULT_STOP_LOSS_PCT
+	DefaultTrailingStopPct      float64  // Environment: DEFAULT_TRAILING_STOP_PCT
+	AutoStatusEnabled           bool     // Environment: AUTO_STATUS_ENABLED
+	FiscalBudgetLimit           float64  // Environment: FISCAL_BUDGET_LIMIT
+	MaxStagnationHours          int      // Environment: MAX_STAGNATION_HOURS (Spec 66)
+	GeminiAPIKey                string   // Environment: GEMINI_API_KEY
+	WatchlistTickers            []string // Environment: WATCHLIST_TICKERS (Spec 72)
 }
 
 // Load initializes the configuration.
@@ -101,6 +103,7 @@ func Load() *Config {
 		FiscalBudgetLimit:           fiscalLimit,
 		MaxStagnationHours:          getEnvAsInt("MAX_STAGNATION_HOURS", 120), // Default 120 (5 days)
 		GeminiAPIKey:                os.Getenv("GEMINI_API_KEY"),
+		WatchlistTickers:            getEnvAsSlice("WATCHLIST_TICKERS", []string{}), // Default empty
 	}
 
 	log.Printf("Configuration Loaded: LogLevel=%s, MaxSize=%dMB, Backups=%d, PollInterval=%dm",
@@ -172,4 +175,12 @@ func getEnvAsBool(key string, fallback bool) bool {
 		return fallback
 	}
 	return val
+}
+
+func getEnvAsSlice(key string, fallback []string) []string {
+	valStr := os.Getenv(key)
+	if valStr == "" {
+		return fallback
+	}
+	return strings.Split(valStr, ",")
 }

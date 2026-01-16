@@ -1,6 +1,6 @@
 # Alpha Watcher
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg) ![Go Version](https://img.shields.io/badge/go-1.22+-00ADD8.svg)
+![License](https://img.shields.io/badge/license-MIT-blue.svg) ![Go Version](https://img.shields.io/badge/go-1.22+-00ADD8.svg)|[![Release Build](https://github.com/billygk/alpha-trading/actions/workflows/release.yml/badge.svg)](https://github.com/billygk/alpha-trading/actions/workflows/release.yml)
 
 **Alpha Watcher** is a high-availability, attended-automation trading supervisor written in Go. It acts as a bridge between your brokerage (Alpaca) and your mobile device (Telegram), providing real-time risk management, interactive trade execution, and automated state synchronization.
 
@@ -57,7 +57,11 @@ It is designed for traders who want the precision of algorithmic execution (trai
     -   Otherwise, it downgrades to a Manual Proposal.
 
 ### Financial Guardrails
-- **Fiscal Budget Hard-Stop**: The bot blocks any `/buy` command (Manual or AI) if `Equity + Cost > $300`. This enforces strict capital discipline.
+- **fiscal Budget Hard-Stop**: The bot blocks any `/buy` command if `Equity + Cost > $300`.
+- **Ghost Money Protection**: The bot automatically aligns its budget to `min(Equity, $300)`, ensuring it shrinks operations if the account value drops below the strategic limit (Spec 77).
+- **Aggregate Batch Budget**: AI can propose multiple buys, but the *sum* of their costs is validated against the budget before any execution is permitted (Spec 80).
+- **Sequential Execution**: All batch orders are executed one-by-one with strict verification ("Filled") between steps to prevent race conditions (Spec 81).
+- **SL Monotonicity**: The bot actively FORBIDS lowering a Stop Loss once set ("SL Decay") to prevent risk expansion (Spec 82).
 
 ---
 
@@ -88,6 +92,10 @@ It is designed for traders who want the precision of algorithmic execution (trai
     TELEGRAM_BOT_TOKEN=your_bot_token
     TELEGRAM_CHAT_ID=your_chat_id
     
+    # AI Configuration
+    GEMINI_API_KEY=your_gemini_key
+    WATCHLIST_TICKERS=VRT,PLTR,BTC
+
     # Optional Overrides (Defaults shown)
     WATCHER_LOG_LEVEL=INFO
     WATCHER_POLL_INTERVAL=60
@@ -114,6 +122,7 @@ It is designed for traders who want the precision of algorithmic execution (trai
 | `AUTO_STATUS_ENABLED` | `false` | If `true`, pushes the `/status` dashboard after every poll (during market hours). |
 | `MAX_STAGNATION_HOURS` | `120` | Minimum hours a position must be held before checking for stagnation (Spec 66). |
 | `GEMINI_MODEL` | `gemini-1.5-flash` | The Gemini model version to use for AI analysis (e.g. `gemini-2.5-pro`). |
+| `WATCHLIST_TICKERS` | `""` | Comma-separated list of symbols (e.g., `VRT,PLTR`) for AI price-grounding (Spec 72). |
 
 ---
 

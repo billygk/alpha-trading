@@ -511,3 +511,47 @@ Result:
 - **Refactoring**: Added `GetAccount` to Market Interface.
 Next Steps: Deploy and Validate.
 ---
+
+---
+Date: 2026-01-14
+Action: Implemented Specs 72-76 (AI Context & Safety Gates)
+Result: 
+- **Spec 72 (Watchlist Pricing)**: Added `WATCHLIST_TICKERS` to config. Bot fetches real-time prices for these assets during JIT Sync and stores them in state.
+- **Spec 73 (Atomic Action)**: Updated AI Prompt to enforce "Single Action Rule" (One recommendation per cycle, except Rotation).
+- **Spec 74 (Price-Aware Payload)**: Injected `watchlist_prices` into AI Snapshot.
+- **Spec 75 (Batch Order Safety)**: Implemented Gate in `risk.go` to REJECT any AI command with multiple `/buy` tokens.
+- **Spec 76 (JIT Update Validation)**: Verified `/update` performs fresh price check before intent mutation.
+Next Steps: Deploy and Validate.
+---
+
+---
+Date: 2026-01-15
+Action: Implemented Specs 77 & 78 (Budget Reconciliation & Watchlist Guardrails)
+Result: 
+- **Spec 77 (Budget Reconciliation)**: Updated `AvailableBudget` logic to `min(Equity, FiscalLimit) - Exposure`. This prevents "Ghost Money" availability when Equity < Limit.
+- **Spec 78 (Watchlist Guardrail)**: Added "Pre-Flight Check" in `buildPortfolioSnapshot` to log CRITICAL error if watchlist data is missing despite being configured.
+- **Documentation**: Updated `README.md` and internal docs.
+Next Steps: Deploy and Validate.
+---
+
+---
+Date: 2026-01-15 19:40
+Action: Implemented Specs 79, 80, 81 (Advanced Batch Execution)
+Result: 
+- **Spec 79 (Multi-Buy)**: Decommissioned Single-Action limit. AI can now propose multiple `/buy` commands (semicolon-delimited).
+- **Spec 80 (Aggregate Budget)**: Implemented "Total Batch Cost" validation. If the sum of all proposed buys exceeds `AvailableBudget`, the entire batch is rejected.
+- **Spec 81 (Sequential Threading)**: Refactored `callback.go` to execute batch orders sequentially (Place -> Verify -> Next) to prevent race conditions.
+- **AI Prompt**: Updated instruction to permit "Multi-Action" strategies.
+Next Steps: Monitor Batch Execution reliability.
+---
+
+---
+Date: 2026-01-15 19:50
+Action: Implemented Spec 82 (SL Monotonicity Guardrail)
+Result: 
+- **Spec 82 (Prevent Decay)**: Implemented strict validation in `/update` logic.
+- **Rules**: New SL must be >= Current SL (unless re-opening).
+- **Enforcement**: Updates that lower the protection floor are now rejected with `[CRITICAL_RISK_VIOLATION]`.
+- **AI Instruction**: Updated prompt to forbid "SL Decay".
+Next Steps: Deploy and Validate.
+---

@@ -647,3 +647,80 @@ Implementation: When preparing the AI payload (Spec 58/64), the bot must use an 
 ## 71. Strategic Exit Instruction (AI)
 Implementation: If AvailableBudget < (Latest_Price * 1), the AI is instructed to return HOLD unless it identifies a viable Rotation (Spec 67).
 
+## 72. Watchlist Price Grounding (Env & State)
+Objective: Provide the AI with real-time price context for "Priority Watchlist" assets.
+Implementation:
+Configuration: Add WATCHLIST_TICKERS to .env (Comma-separated list, e.g., VRT,PLTR,BTC).
+State: Add a watchlist_prices map (ticker: price) to the PortfolioState struct.
+Refresh Logic: During the Spec 68 JIT Sync, the bot MUST fetch the LatestTrade for all tickers in WATCHLIST_TICKERS and update the local state.
+
+## 73. Atomic AI Recommendation (The "Single Action" Rule)
+Objective: Prevent the AI from proposing multiple trades that collectively violate the budget.
+Logic:
+Constraint: The AI is strictly limited to ONE primary recommendation per review cycle (BUY, SELL, or UPDATE).
+Exception: A "Rotation" (SELL A + BUY B) is treated as a single atomic recommendation.
+Instruction: Update the AI System Instruction to explicitly forbid multi-buy lists (e.g., "BUY VRT and BUY PLTR") to prevent budget race conditions.
+
+## 74. Price-Aware Payload (Context Injection)
+Implementation:
+When generating the JSON payload for Gemini, the Snapshot must include the watchlist_prices map.
+The prompt must instruct the AI: "Use the provided watchlist_prices to calculate the total cost of your recommendation. Your total proposed cost MUST be < available_budget."
+
+## 75. Batch Order Safety Gate
+Objective: Hard-stop any AI command that contains multiple /buy strings if they are not part of a validated Rotation.
+Logic: If the action_command from Spec 59 contains more than one /buy instruction, the bot must reject it and log: [AI_LOGIC_ERROR] Multiple buy orders suggested without rotation.
+
+## 76. Broker-Synchronized Intent Mutation (/update)
+Objective: Ensure manual risk parameter updates are validated against real-time market reality.
+Implementation:
+JIT Price Fetch: Before validating any /update <ticker> <sl> <tp> command, the bot MUST perform a fresh Alpaca REST call (GetLatestTrade) for the ticker.
+Validation Snapshot: Use the price from the JIT fetch (the "Snapshot Price") to evaluate the Safety Gates defined in Spec 51.
+SL Guardrail: Reject the update if new_sl >= Snapshot Price.
+TP Guardrail: Reject the update if new_tp <= Snapshot Price.
+State Integrity: Only update portfolio_state.json if both gates pass against the real-time Snapshot Price.
+Feedback: If validation fails, the Telegram response must include the Snapshot Price used for the rejection (e.g., "❌ Rejected: New SL $175 is above current price $174.20").
+
+## 77. Budget Reconciliation & The "Ghost Money" Fix
+Objective: Resolve discrepancies between strategic limits (fiscal_limit) and broker reality (Equity).
+Logic:
+Redundancy Review: Do NOT delete fiscal_limit. It remains the strategic "Straitjacket" for the bot.
+Dynamic Re-binding: The AvailableBudget calculation (Spec 69) is further refined.
+The Formula:
+Real_Cap = min(Alpaca_Equity, fiscal_limit)
+AvailableBudget = Real_Cap - CurrentTotalExposure
+AI Sync: The /status and AI Payload must clearly differentiate between "Strategic Limit" ($300) and "Broker Equity" ($296.68).
+Safety Gate: If Alpaca_Equity falls below fiscal_limit due to losses, the bot MUST automatically shrink its "operating theater" to the lower value. This prevents the AI from recommending trades based on "Ghost Money" (the $3.32 gap in the logs).
+
+## 78. Priority Watchlist Price Guardrail (Log Fix)
+Objective: Prevent AI from entering "HOLD" states due to null watchlist data (as seen in logs).
+Implementation:
+Pre-Flight Check: The /analyze and polling loops MUST verify that watchlist_prices is populated before calling the AI.
+Error Handling: If WATCHLIST_TICKERS is defined in .env but watchlist_prices is empty or null in the JSON, the bot must log a [CRITICAL_DATA_MISSING] error and attempt a forced price refresh before proceeding.
+
+## 79. Decommission of Spec 75 (Multi-Buy Permission)
+Objective: Allow the AI to suggest multiple entries in a single review cycle to maximize capital deployment efficiency.
+Logic:
+Decommission: Spec 75 (Batch Order Safety Gate) is hereby marked as OBSOLETE.
+Permission: The AI is now permitted to return multiple /buy commands in its action_command field.
+UI Requirement: The Telegram handler must parse the action_command string (e.g., delimited by ;) and present each order as an independent confirmation card or a single "Batch Execution" card.
+
+## 80. Aggregate Budget Validation (Batch Safety)
+Objective: Prevent partial execution failures when multiple trades are proposed.
+Implementation:
+Summation Logic: Before presenting any [✅ EXECUTE] buttons for a multi-order recommendation, the bot MUST calculate the total aggregate cost: Total_Batch_Cost = Σ(qty_i * price_i).
+Hard-Stop: If Total_Batch_Cost > AvailableBudget, the bot must reject the entire recommendation with: "❌ Batch Rejection: Total cost ${{total}} exceeds available budget ${{budget}}."
+Verification: This check must use fresh prices (Spec 72) to ensure math remains valid at the moment of proposal.
+
+## 81. Sequential Execution Threading
+Objective: Ensure multiple orders are processed without "Locked Shares" errors (Spec 54).
+Implementation:
+If a user confirms a "Batch," the bot must execute them sequentially, awaiting the "Filled" or "Accepted" status of Order N before initiating Order N+1.
+
+## 82. Stop-Loss (SL) Monotonicity Guardrail
+Objective: Prevent "SL Decay" where the exit floor is lowered during a price drop.
+Logic:
+Safety Gate: In the /update logic and any AI-directed SL update, the bot MUST validate that New_SL >= Current_SL.
+Enforcement: If New_SL < Current_SL, the bot must reject the update with a [CRITICAL_RISK_VIOLATION] error.
+Exception: The only permitted downward move is if a position is completely closed and re-opened.
+AI Instruction: Update the AI prompt to explicitly state: "You are FORBIDDEN from lowering a Stop Loss once it is set. If the market moves against a position, either HOLD or recommend SELL."
+

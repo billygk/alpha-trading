@@ -88,8 +88,6 @@ func (w *Watcher) SyncWithBroker() (models.PortfolioState, error) {
 		return w.state, fmt.Errorf("JIT Sync: Failed to list positions: %v", err)
 	}
 
-	buyingPower := account.BuyingPower // Alpaca Binding
-
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -189,26 +187,64 @@ func (w *Watcher) SyncWithBroker() (models.PortfolioState, error) {
 
 	w.state.Positions = newPositions
 
-	// 3. Dynamic Budget Calculation (Spec 69)
-	// AvailableBudget = min(Alpaca_Buying_Power, FiscalLimit - CurrentTotalExposure)
+	// 3. Dynamic Budget Calculation (Spec 69 & 77)
+	// Spec 77: The Formula:
+	// Real_Cap = min(Alpaca_Equity, fiscal_limit)
+	// AvailableBudget = Real_Cap - CurrentTotalExposure
+
 	fiscalLimit := decimal.NewFromFloat(w.config.FiscalBudgetLimit)
-	remainingFiscal := fiscalLimit.Sub(currentExposure)
 
-	// Available cannot be negative in logic, but min handles it if BP is positive.
-	// If remainingFiscal is negative (over budget), Available should be 0.
-	if remainingFiscal.IsNegative() {
-		remainingFiscal = decimal.Zero
+	// We need Equity for Spec 77. We fetched 'account' at the start.
+	// We didn't pass equity to this function, but we have 'account'.
+	// account.Equity is numeric.
+	equity := account.Equity
+
+	// Real Cap
+	realCap := fiscalLimit
+	if equity.LessThan(realCap) {
+		realCap = equity
 	}
 
-	// Helper min
-	available := buyingPower
-	if remainingFiscal.LessThan(buyingPower) {
-		available = remainingFiscal
+	// Available
+	available := realCap.Sub(currentExposure)
+
+	// Clamp to 0 if negative
+	if available.IsNegative() {
+		available = decimal.Zero
 	}
+
+	// Note: We ignore Buying Power here as the 'Strategic' limit,
+	// assuming RealCap is the stricter constraint for the AI.
+	// However, we must physically check BP before trade execution separately.
+	// For AI planning, we use this "Ghost Money" fixed budget.
 
 	w.state.CurrentExposure = currentExposure
 	w.state.FiscalLimit = fiscalLimit
 	w.state.AvailableBudget = available
+
+	// Spec 72: Watchlist Price Grounding (Env & State)
+	// Refresh Logic: Fetch LatestTrade for all tickers in WATCHLIST_TICKERS and update the local state.
+	// We do this AFTER reconciling positions, but before saving.
+	if len(w.config.WatchlistTickers) > 0 {
+		if w.state.WatchlistPrices == nil {
+			w.state.WatchlistPrices = make(map[string]float64)
+		}
+		for _, ticker := range w.config.WatchlistTickers {
+			ticker = strings.ToUpper(strings.TrimSpace(ticker))
+			if ticker == "" {
+				continue
+			}
+			// Use GetPrice (returns decimal) -> float64
+			priceDec, err := w.provider.GetPrice(ticker)
+			if err != nil {
+				log.Printf("Watchlist Warning: Could not fetch price for %s: %v", ticker, err)
+				continue
+			}
+			f, _ := priceDec.Float64()
+			w.state.WatchlistPrices[ticker] = f
+		}
+	}
+
 	// LastSync updated in SaveState
 	w.saveStateLocked()
 

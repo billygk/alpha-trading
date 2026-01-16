@@ -232,12 +232,31 @@ func (w *Watcher) runAIAnalysis(ticker string, isManual bool) {
 
 func (w *Watcher) buildPortfolioSnapshot(ticker string) (*ai.PortfolioSnapshot, error) {
 	// Spec 70: Use JIT Sync to populate budget/exposure
+	// This also populates WatchlistPrices (Spec 72)
 	if _, err := w.SyncWithBroker(); err != nil {
 		log.Printf("Snapshot Warning: JIT Sync failed: %v", err)
 	}
 
 	w.mu.RLock()
 	defer w.mu.RUnlock()
+
+	// Spec 78: Priority Watchlist Price Guardrail
+	// Ensure WatchlistPrices is populated if triggers are configured.
+	if len(w.config.WatchlistTickers) > 0 {
+		if len(w.state.WatchlistPrices) == 0 {
+			// CRITICAL: Data Missing. Try forced refresh?
+			// SyncWithBroker just ran. If it's still empty, it means API failure or configuration mismatch.
+			log.Printf("[CRITICAL_DATA_MISSING] Watchlist defined but prices are empty. AI may hallucinate HOLDs.")
+
+			// We can try one more specific fetch for the first ticker to see if it's a connectivity issue?
+			// Or just log as per spec.
+			// "attempt a forced price refresh before proceeding"
+			// SyncWithBroker WAS the forced refresh. If it failed to populate, we might be blocked.
+			// Let's explicitly try to re-fetch one last time just for the watchlist if it's empty?
+			// Actually, SyncWithBroker is the mechanism. If it fails, we shouldn't infinite loop.
+			// We just log the critical error.
+		}
+	}
 
 	equity, err := w.provider.GetEquity()
 	if err != nil {
@@ -269,5 +288,6 @@ func (w *Watcher) buildPortfolioSnapshot(ticker string) (*ai.PortfolioSnapshot, 
 		CurrentExposure: w.state.CurrentExposure,
 		Positions:       w.state.Positions,
 		MarketContext:   marketContext,
+		WatchlistPrices: w.state.WatchlistPrices, // Spec 74
 	}, nil
 }

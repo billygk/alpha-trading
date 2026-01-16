@@ -413,13 +413,10 @@ func (w *Watcher) handleUpdateCommand(parts []string) string {
 	defer w.mu.Unlock()
 
 	found := false
+	var foundIndex int
 	for i, p := range w.state.Positions {
 		if p.Ticker == ticker && p.Status == "ACTIVE" {
-			w.state.Positions[i].StopLoss = sl
-			w.state.Positions[i].TakeProfit = tp
-			if len(parts) >= 5 {
-				w.state.Positions[i].TrailingStopPct = tsPct
-			}
+			foundIndex = i
 			found = true
 			break
 		}
@@ -427,6 +424,24 @@ func (w *Watcher) handleUpdateCommand(parts []string) string {
 
 	if !found {
 		return fmt.Sprintf("⚠️ No active position found for %s (or check portfolio_state.json).", ticker)
+	}
+
+	// Spec 82: SL Monotonicity Guardrail
+	// "Prevent SL Decay: New_SL >= Current_SL"
+	currentSL := w.state.Positions[foundIndex].StopLoss
+	if !sl.GreaterThanOrEqual(currentSL) && !currentSL.IsZero() {
+		// Reject
+		return fmt.Sprintf("❌ CRITICAL_RISK_VIOLATION (Spec 82):\nCannot lower Stop Loss.\nCurrent: $%s\nRequested: $%s\nMotion denied to prevent risk expansion.",
+			currentSL.StringFixed(2), sl.StringFixed(2))
+	}
+
+	// Validate Logical Consistency again with locked state?
+	// We did it with input params.
+
+	w.state.Positions[foundIndex].StopLoss = sl
+	w.state.Positions[foundIndex].TakeProfit = tp
+	if len(parts) >= 5 {
+		w.state.Positions[foundIndex].TrailingStopPct = tsPct
 	}
 
 	// Spec 51: Explicit confirmation format
