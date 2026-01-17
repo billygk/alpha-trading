@@ -56,22 +56,15 @@ func New(cfg *config.Config, provider market.MarketProvider) *Watcher {
 		config:           cfg,
 		wasMarketOpen:    false, // Default to false, will sync on first poll
 		commands: []CommandDoc{
-			{"/buy", "Propose a new trade", "/buy <ticker> <qty> [sl] [tp]"},
-			{"/sell", "Liquidate and clean state", "/sell <ticker>"},
-			{"/refresh", "Sync local state with Alpaca truth", "/refresh"},
-			{"/status", "Immediate Rich Dashboard", "/status"},
-			{"/list", "List active positions", "/list"},
-			{"/price", "Get real-time price for a ticker", "/price AAPL"},
-			{"/market", "Check market status", "/market"},
-			{"/search", "Search for assets by name/ticker", "/search Apple"},
-			{"/ping", "Check bot latency", "/ping"},
-			{"/update", "Update SL/TP for active position", "/update <ticker> <sl> <tp> [ts-pct]"},
-			{"/scan", "Scan sector health (biotech, metals, energy, defense)", "/scan <sector>"},
-			{"/analyze", "Request AI portfolio analysis (10m cooldown)", "/analyze [ticker]"},
-			{"/portfolio", "Dump raw portfolio state for debugging", "/portfolio"},
-			{"/stop", "Disable autonomous execution (Killswitch)", "/stop"},
+			{"/ping", "Connectivity check", "/ping"},
+			{"/status", "Detailed broker-native dashboard", "/status"},
+			{"/buy", "Manual entry (native bracket)", "/buy <ticker> <qty> [sl] [tp]"},
+			{"/sell", "Universal exit (cancels orders + liquidates)", "/sell <ticker>"},
+			{"/update", "Mutate native risk parameters", "/update <ticker> <sl> <tp>"},
+			{"/scan", "Trigger AI Portfolio Review & Autonomous Rotation", "/scan"},
+			{"/stop", "Killswitch. Disables all autonomous execution", "/stop"},
 			{"/start", "Enable autonomous execution", "/start"},
-			{"/help", "Show this help message", "/help"},
+			{"/config", "Inspect system parameters", "/config"},
 		},
 	}
 
@@ -189,6 +182,11 @@ func (w *Watcher) Poll() {
 }
 
 func (w *Watcher) runAIAnalysis(ticker string, isManual bool) {
+	// Spec 96: Logic Guard for Autonomous Execution
+	if !isManual && !w.state.AutonomousEnabled {
+		return
+	}
+
 	// Spec 58 & 64: AI Analysis Loop
 	if w.config.GeminiAPIKey == "" {
 		return
