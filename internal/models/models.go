@@ -35,4 +35,5 @@ type PortfolioState struct {
 	AvailableBudget decimal.Decimal    `json:"available_budget"` // Spec 65: Persisted Available
 	CurrentExposure decimal.Decimal    `json:"current_exposure"` // Spec 65: Persisted Exposure
 	WatchlistPrices map[string]float64 `json:"watchlist_prices"` // Spec 72: Watchlist Prices
+	AutonomousEnabled bool             `json:"autonomous_enabled"` // Spec 86: Global Killswitch
 }

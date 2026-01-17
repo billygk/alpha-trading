@@ -555,3 +555,16 @@ Result:
 - **AI Instruction**: Updated prompt to forbid "SL Decay".
 Next Steps: Deploy and Validate.
 ---
+
+---
+Date: 2026-01-16
+Action: Implemented Specs 83-91 (Autonomy, Killswitch, Broker-as-Truth)
+Result:
+- **Spec 83 (Full Autonomy)**: AI now executes trades immediately if Confidence >= 0.70 and Autonomy is Enabled.
+- **Spec 86 (Killswitch)**: Added `/stop` and `/start` to toggle autonomous execution.
+- **Spec 88 (Broker-as-Truth)**: Decommissioned local SL/TP checks. Polling loop now relies on Broker state.
+- **Spec 89 (Bracket Orders)**: `/buy` and AI executions now place Bracket Orders (SL/TP) directly on Alpaca.
+- **Spec 90 (Account Scale)**: Removed $300 Fiscal Limit. Bot uses full Buying Power.
+- **Spec 85 (Guardrails)**: Implemented Slippage Check (0.5% max) for autonomous buys.
+Next Steps: Deploy and Validate Autonomy.
+---

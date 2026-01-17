@@ -49,17 +49,16 @@ It is designed for traders who want the precision of algorithmic execution (trai
 - **Portfolio Rotation**: Identifies opportunity costs. If budget is full, the AI searches for "weakest links" (stagnant or underperforming) and recommends rotating capital into higher-conviction opportunities (Spec 67).
 
 ### Automation Levels
-1.  **Semi-Autonomous (Buy/Sell)**: AI proposes a trade; Human must click `[✅ EXECUTE]`.
-2.  **Protected Autonomous Ratchet (Update)**: AI can *automatically* tighten Stop Loses (Update) ONLY IF:
-    -   The move is Monotonic (SL increases).
-    -   The new SL is > 1.5% away from current price (Buffer).
-    -   Frequency is < once per 4 hours.
-    -   Otherwise, it downgrades to a Manual Proposal.
+1.  **Fully Autonomous Execution (Buy/Sell/Update)**:
+    -   If Confidence >= 0.70 AND Autonomy Enabled: AI executes immediately.
+    -   Includes strict Slippage Checks (Ask/Bid spread < 0.5%).
+    -   Uses Native Bracket Orders (SL/TP) on the broker side.
+2.  **Semi-Autonomous Fallback**: If Confidence < 0.70 or Autonomy Disabled, AI falls back to proposing trades via Telegram buttons.
+3.  **Killswitch**: Use `/stop` to force manual mode instantly.
 
 ### Financial Guardrails
-- **fiscal Budget Hard-Stop**: The bot blocks any `/buy` command if `Equity + Cost > $300`.
-- **Ghost Money Protection**: The bot automatically aligns its budget to `min(Equity, $300)`, ensuring it shrinks operations if the account value drops below the strategic limit (Spec 77).
-- **Aggregate Batch Budget**: AI can propose multiple buys, but the *sum* of their costs is validated against the budget before any execution is permitted (Spec 80).
+- **Dynamic Account Sizing**: The bot uses the full `Buying Power` available in the brokerage account (Spec 90). The previous $300 limit has been removed.
+- **Aggregate Batch Budget**: AI can propose multiple buys, but the *sum* of their costs is validated against available Buying Power before execution (Spec 80).
 - **Sequential Execution**: All batch orders are executed one-by-one with strict verification ("Filled") between steps to prevent race conditions (Spec 81).
 - **SL Monotonicity**: The bot actively FORBIDS lowering a Stop Loss once set ("SL Decay") to prevent risk expansion (Spec 82).
 
@@ -170,6 +169,12 @@ Manually update the risk parameters for an active position.
 ### `/portfolio`
 Dump the raw `portfolio_state.json` file for debugging purposes.
 - **Chunking**: Output is split into multiple messages if the file exceeds 3900 characters.
+
+### `/stop`
+**Emergency Brake**. Disables autonomous execution immediately. The bot reverts to Manual/Suggestion mode.
+
+### `/start`
+Re-enables autonomous execution.
 
 ---
 

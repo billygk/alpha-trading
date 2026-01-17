@@ -15,10 +15,11 @@ import (
 // or a Mock for testing, without changing the code that *uses* the provider.
 type MarketProvider interface {
 	GetPrice(ticker string) (decimal.Decimal, error)
+	GetQuote(ticker string) (*marketdata.Quote, error)
 	GetEquity() (decimal.Decimal, error)
 	GetClock() (*alpaca.Clock, error)
 	SearchAssets(query string) ([]alpaca.Asset, error)
-	PlaceOrder(ticker string, qty decimal.Decimal, side string) (*alpaca.Order, error)
+	PlaceOrder(ticker string, qty decimal.Decimal, side string, slPrice decimal.Decimal, tpPrice decimal.Decimal) (*alpaca.Order, error)
 	GetOrder(orderID string) (*alpaca.Order, error)
 	ListOrders(status string) ([]alpaca.Order, error)
 	ListPositions() ([]alpaca.Position, error)
@@ -58,6 +59,11 @@ func (a *AlpacaProvider) GetPrice(ticker string) (decimal.Decimal, error) {
 		return decimal.Zero, nil // Or a specific error like "no trade found"
 	}
 	return decimal.NewFromFloat(trade.Price), nil // Return the price and nil error if successful
+}
+
+// GetQuote fetches the latest quote (Bid/Ask) for a ticker.
+func (a *AlpacaProvider) GetQuote(ticker string) (*marketdata.Quote, error) {
+	return a.mdClient.GetLatestQuote(ticker, marketdata.GetLatestQuoteRequest{})
 }
 
 // GetEquity fetches the current total account equity.

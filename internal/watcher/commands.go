@@ -72,9 +72,29 @@ func (w *Watcher) HandleCommand(cmd string) string {
 			return "⚠️ Error: /refresh does not accept parameters. Use /sell then /buy to change settings."
 		}
 		return w.handleRefreshCommand()
+	case "/stop":
+		return w.handleStopCommand()
+	case "/start":
+		return w.handleStartCommand()
 	default:
-		return "Unknown command. Try /buy, /status, /sell, /refresh or /scan."
+		return "Unknown command. Try /buy, /status, /sell, /refresh, /scan, /stop or /start."
 	}
+}
+
+func (w *Watcher) handleStopCommand() string {
+	w.mu.Lock()
+	w.state.AutonomousEnabled = false
+	w.saveStateLocked()
+	w.mu.Unlock()
+	return "🛑 AUTONOMY DISABLED. Revert to manual mode."
+}
+
+func (w *Watcher) handleStartCommand() string {
+	w.mu.Lock()
+	w.state.AutonomousEnabled = true
+	w.saveStateLocked()
+	w.mu.Unlock()
+	return "✅ AUTONOMY ENABLED. AI Execution Active."
 }
 
 func (w *Watcher) handleScanCommand(parts []string) string {
@@ -206,33 +226,8 @@ func (w *Watcher) handleBuyCommand(parts []string) string {
 	// BUT, strict reading: `Current_Equity` + `Proposed`.
 	// Let's implement strictly.
 
-	// --- Spec 63: Fiscal Budget Hard-Stop (Revised for Paper Trading) ---
-	// Original Spec: "Current_Equity + Proposed_Order_Value > 300".
-	// Issue: Paper accounts start with $100k Equity. $100k > $300 blocking everything.
-	// Revised Logic: "Total Cost Basis of Active Positions + Proposed Trade > Limit".
-	// This caps the *Invested Capital* (Exposure) to $300, ignoring uninvested Cash.
-
-	w.mu.RLock()
-	var currentExposure decimal.Decimal
-	for _, p := range w.state.Positions {
-		if p.Status == "ACTIVE" {
-			// Cost = Qty * EntryPrice
-			cost := p.Quantity.Mul(p.EntryPrice)
-			currentExposure = currentExposure.Add(cost)
-		}
-	}
-	w.mu.RUnlock()
-
-	projectedExposure := currentExposure.Add(totalCost)
-	budgetLimit := decimal.NewFromFloat(w.config.FiscalBudgetLimit)
-
-	if projectedExposure.GreaterThan(budgetLimit) {
-		return fmt.Sprintf("❌ Budget Violation (Spec 63):\n"+
-			"Usage: ($%s + $%s) = $%s > Limit: $%s\n"+
-			"Details: %s @ $%s (x%s)",
-			currentExposure.StringFixed(2), totalCost.StringFixed(2), projectedExposure.StringFixed(2), budgetLimit.StringFixed(2),
-			ticker, price.StringFixed(2), qty.StringFixed(2))
-	}
+	// Spec 90: Removal of Fiscal Guardrails (Account-Scale Trading)
+	// We removed the $300 hard-stop. We rely on Buying Power check above.
 
 	// Store Proposal
 	w.mu.Lock()
@@ -306,7 +301,7 @@ func (w *Watcher) handleSellCommand(parts []string) string {
 				positionFound = true
 
 				// Execute Sell
-				order, err := w.provider.PlaceOrder(ticker, p.Qty, "sell")
+				order, err := w.provider.PlaceOrder(ticker, p.Qty, "sell", decimal.Zero, decimal.Zero)
 				if err != nil {
 					msg = append(msg, fmt.Sprintf("❌ Failed to sell position: %v", err))
 					log.Printf("[FATAL_TRADE_ERROR] Manual sell failed for %s: %v", ticker, err)
