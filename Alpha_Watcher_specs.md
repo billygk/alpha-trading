@@ -846,3 +846,35 @@ Environment: All integration tests MUST run against the Alpaca Paper Trading API
 Bracket Order Verification: Create a test that places a /buy order with SL/TP and verifies (via GetOrder) that the resulting bracket is correctly linked on the broker side.
 Rotation Simulation: Implement a test script that simulates a full "Spec 67 Rotation": cancel existing orders, sell asset A, verify fill, and buy asset B.
 Slippage Gate Test: Mock a high-spread market condition and verify that the Slippage Gate (Spec 85) correctly aborts the autonomous execution.
+
+## 99. Telegram Telemetry & Autonomous Activity Logging
+Objective: Transform the Telegram channel into a high-fidelity, real-time audit log of all autonomous bot actions and internal states.
+Implementation:
+Lifecycle Notifications:
+Startup: 🚀 SYSTEM START: Alpha Watcher v{{version}} online. Mode: [AUTONOMOUS/MANUAL]. Include current Equity and Buying Power.
+Shutdown: 🛑 SYSTEM SHUTDOWN: Signal received. State saved successfully. (Ref Spec 7).
+Autonomy Toggle: ⚡ AUTONOMY ENABLED or ⏸️ AUTONOMY DISABLED (Ref Spec 86).
+Operational Heartbeats:
+Analysis Start: 🔍 SCAN INITIATED: Performing portfolio review and sector check...
+AI Interaction: 🤖 CONSULTING AI: Sending context to Gemini 2.5 Flash...
+Price Updates: Every successful JIT sync (Spec 68/72) that results in a price change > 0.5% for watchlist items MUST be reported as a consolidated block:
+
+  📊 MARKET SNAPSHOT:
+  - VRT: $177.50 (▲0.2%)
+  - PLTR: $148.20 (▼0.1%)
+
+Mandatory Action Triggers:
+Decision Event: When AI review results in an action: 🤖 AI DECISION: [BUY/SELL/UPDATE] {{ticker}}. Include the analysis string for the "Why."
+Order Lifecycle:
+⏳ ORDER PLACED: {{ticker}} | {{type}} | Qty: {{qty}}.
+✅ ORDER FILLED: {{ticker}} @ ${{price}}.
+❌ ORDER FAILED: {{ticker}} | Reason: {{reason}}.
+Risk Adjustment: 🛡️ RISK UPDATED: {{ticker}} | New SL: ${{sl}} | New TP: ${{tp}}.
+Formatting Standards:
+Use Monospace for prices, quantities, and tickers to ensure legibility.
+Use Header Tags or Bold text for start-of-sequence events (e.g., a Rotation start).
+Error Transparency:
+Any internal "Abort" (e.g., Spec 85 Slippage Gate or Spec 91 Cancellation Timeout) MUST be reported immediately with the [ABORT] prefix.
+Report [DATA_ERROR] if watchlist_prices returns null or stale (Ref Spec 78).
+Quiet Mode Logic: If the AI returns HOLD with a confidence score > 0.90, the bot may suppress the decision notification to reduce noise, unless it was a manual /scan.
+
