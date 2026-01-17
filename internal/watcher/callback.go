@@ -120,7 +120,7 @@ func (w *Watcher) HandleCallback(callbackID, data string) string {
 			return fmt.Sprintf("❌ Execution Aborted: Could not clear pending orders for %s (Timeout).", ticker)
 		}
 
-		order, err := w.provider.PlaceOrder(ticker, qty, "sell")
+		order, err := w.provider.PlaceOrder(ticker, qty, "sell", decimal.Zero, decimal.Zero)
 		if err != nil {
 			msg := fmt.Sprintf("❌ Execution Failed for %s: %v", ticker, err)
 			log.Printf("[FATAL_TRADE_ERROR] %s", msg)
@@ -205,7 +205,7 @@ func (w *Watcher) handleBuyCallback(data string) string {
 		}
 
 		// 1. Execute Buy
-		order, err := w.provider.PlaceOrder(ticker, proposal.Qty, "buy")
+		order, err := w.provider.PlaceOrder(ticker, proposal.Qty, "buy", proposal.StopLoss, proposal.TakeProfit)
 		if err != nil {
 			msg := fmt.Sprintf("❌ Buy Execution Failed: %v", err)
 			log.Printf("[FATAL_TRADE_ERROR] %s", msg)
@@ -331,7 +331,27 @@ func (w *Watcher) handleAICallback(data string) string {
 					output = fmt.Sprintf("⚠️ Clearance failed: %v", err)
 				} else {
 					// 2. Place Order
-					order, err := w.provider.PlaceOrder(ticker, qty, "buy")
+				// Parse Optional SL/TP for Manual AI Execution
+				var sl, tp decimal.Decimal
+				if len(parts) >= 4 {
+					sl, _ = decimal.NewFromString(parts[3])
+				}
+				if len(parts) >= 5 {
+					tp, _ = decimal.NewFromString(parts[4])
+				}
+				// Apply Defaults if needed
+				if sl.IsZero() {
+					price, _ := w.provider.GetPrice(ticker)
+					multiplier := decimal.NewFromInt(1).Sub(decimal.NewFromFloat(w.config.DefaultStopLossPct).Div(decimal.NewFromInt(100)))
+					sl = price.Mul(multiplier)
+				}
+				if tp.IsZero() {
+					price, _ := w.provider.GetPrice(ticker)
+					multiplier := decimal.NewFromInt(1).Add(decimal.NewFromFloat(w.config.DefaultTakeProfitPct).Div(decimal.NewFromInt(100)))
+					tp = price.Mul(multiplier)
+				}
+
+				order, err := w.provider.PlaceOrder(ticker, qty, "buy", sl, tp)
 					if err != nil {
 						output = fmt.Sprintf("❌ Buy Failed (%s): %v", ticker, err)
 					} else {

@@ -67,6 +67,8 @@ func New(cfg *config.Config, provider market.MarketProvider) *Watcher {
 			{"/scan", "Scan sector health (biotech, metals, energy, defense)", "/scan <sector>"},
 			{"/analyze", "Request AI portfolio analysis (10m cooldown)", "/analyze [ticker]"},
 			{"/portfolio", "Dump raw portfolio state for debugging", "/portfolio"},
+			{"/stop", "Disable autonomous execution (Killswitch)", "/stop"},
+			{"/start", "Enable autonomous execution", "/start"},
 			{"/help", "Show this help message", "/help"},
 		},
 	}

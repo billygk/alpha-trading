@@ -8,7 +8,7 @@ import (
 // PlaceOrder executes a market order.
 // Side should be "buy" or "sell".
 // Side should be "buy" or "sell".
-func (a *AlpacaProvider) PlaceOrder(ticker string, qty decimal.Decimal, side string) (*alpaca.Order, error) {
+func (a *AlpacaProvider) PlaceOrder(ticker string, qty decimal.Decimal, side string, slPrice decimal.Decimal, tpPrice decimal.Decimal) (*alpaca.Order, error) {
 	req := alpaca.PlaceOrderRequest{
 		Symbol:      ticker,
 		Qty:         &qty,
@@ -16,6 +16,22 @@ func (a *AlpacaProvider) PlaceOrder(ticker string, qty decimal.Decimal, side str
 		Type:        alpaca.Market,
 		TimeInForce: alpaca.Day,
 	}
+
+	// Spec 89: Native Broker Risk Management (Bracket Orders)
+	if side == "buy" && (!slPrice.IsZero() || !tpPrice.IsZero()) {
+		req.OrderClass = alpaca.Bracket
+		if !tpPrice.IsZero() {
+			req.TakeProfit = &alpaca.TakeProfit{
+				LimitPrice: &tpPrice,
+			}
+		}
+		if !slPrice.IsZero() {
+			req.StopLoss = &alpaca.StopLoss{
+				StopPrice: &slPrice,
+			}
+		}
+	}
+
 	return a.tradeClient.PlaceOrder(req)
 }
 

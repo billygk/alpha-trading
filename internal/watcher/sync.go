@@ -36,8 +36,8 @@ func (w *Watcher) saveStateLocked() {
 	}
 
 	w.state.CurrentExposure = currentExposure
-	w.state.FiscalLimit = decimal.NewFromFloat(w.config.FiscalBudgetLimit)
-	w.state.AvailableBudget = w.state.FiscalLimit.Sub(currentExposure)
+	// Spec 90: AvailableBudget is updated by JIT Sync (SyncWithBroker) using BuyingPower.
+	// We do NOT recalculate it here to avoid overwriting with legacy formula.
 
 	storage.SaveState(w.state)
 }
@@ -187,40 +187,12 @@ func (w *Watcher) SyncWithBroker() (models.PortfolioState, error) {
 
 	w.state.Positions = newPositions
 
-	// 3. Dynamic Budget Calculation (Spec 69 & 77)
-	// Spec 77: The Formula:
-	// Real_Cap = min(Alpaca_Equity, fiscal_limit)
-	// AvailableBudget = Real_Cap - CurrentTotalExposure
-
-	fiscalLimit := decimal.NewFromFloat(w.config.FiscalBudgetLimit)
-
-	// We need Equity for Spec 77. We fetched 'account' at the start.
-	// We didn't pass equity to this function, but we have 'account'.
-	// account.Equity is numeric.
-	equity := account.Equity
-
-	// Real Cap
-	realCap := fiscalLimit
-	if equity.LessThan(realCap) {
-		realCap = equity
-	}
-
-	// Available
-	available := realCap.Sub(currentExposure)
-
-	// Clamp to 0 if negative
-	if available.IsNegative() {
-		available = decimal.Zero
-	}
-
-	// Note: We ignore Buying Power here as the 'Strategic' limit,
-	// assuming RealCap is the stricter constraint for the AI.
-	// However, we must physically check BP before trade execution separately.
-	// For AI planning, we use this "Ghost Money" fixed budget.
+	// Spec 90: Removal of Fiscal Guardrails (Account-Scale Trading)
+	// The AvailableBudget calculation is simplified to AvailableBudget = Alpaca_Buying_Power.
+	// We decommission Spec 63/77 logic.
 
 	w.state.CurrentExposure = currentExposure
-	w.state.FiscalLimit = fiscalLimit
-	w.state.AvailableBudget = available
+	w.state.AvailableBudget = account.BuyingPower
 
 	// Spec 72: Watchlist Price Grounding (Env & State)
 	// Refresh Logic: Fetch LatestTrade for all tickers in WATCHLIST_TICKERS and update the local state.
