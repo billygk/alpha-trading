@@ -303,12 +303,61 @@ func (w *Watcher) checkEOD() {
 		return
 	}
 
-	// EOD Trigger: Transition from Open -> Closed
+	// Load NY Location for accurate Date tracking
+	loc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		log.Printf("Error loading NY location: %v", err)
+		return
+	}
+	nowNY := time.Now().In(loc)
+	todayNY := nowNY.Format("2006-01-02")
+
+	shouldSend := false
+
+	// 1. Transition Trigger (Real-time)
 	// Only trigger if we mistakenly thought it was open (or tracked it as open) and now it is closed.
 	if w.wasMarketOpen && !clock.IsOpen {
-		log.Println("📉 MARKET CLOSED. Generating EOD Report (Spec 49)...")
-		go w.generateAndSendEODReport()
+		log.Println("📉 MARKET CLOSED (Transition detected).")
+		shouldSend = true
 	}
+
+	// 2. Resilience Trigger (State-based)
+	// If Market is CLOSED, and we haven't sent a report for "Today" yet.
+	// We must ensure we are "After Close" (End of Day), not "Before Open" (Start of Day).
+	if !clock.IsOpen {
+		w.mu.RLock()
+		lastDate := w.state.LastEODDate
+		w.mu.RUnlock()
+
+		if lastDate != todayNY {
+			// Check if we are Before Next Open (i.e. currently Post-Market)
+			// If NextOpen is TODAY, then we are Before Open. We should NOT report yet.
+			// If NextOpen is TOMORROW (or later), then we are After Close. We SHOULD report.
+			nextOpenNY := clock.NextOpen.In(loc)
+			isNextOpenToday := nextOpenNY.Format("2006-01-02") == todayNY
+
+			if !isNextOpenToday {
+				log.Printf("📉 MARKET CLOSED (Resilience check: Last %s != Today %s).", lastDate, todayNY)
+				shouldSend = true
+			}
+		}
+	}
+
+	if shouldSend {
+		w.mu.Lock()
+		// Double check inside lock
+		if w.state.LastEODDate != todayNY {
+			w.state.LastEODDate = todayNY
+			w.saveStateLocked()
+			w.mu.Unlock()
+
+			log.Println("Generating EOD Report (Spec 49)...")
+			go w.generateAndSendEODReport()
+		} else {
+			w.mu.Unlock()
+		}
+	}
+
 	w.wasMarketOpen = clock.IsOpen
 }
 
