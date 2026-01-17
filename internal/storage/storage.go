@@ -19,7 +19,7 @@ func LoadState() (models.PortfolioState, error) {
 	if os.IsNotExist(err) {
 		log.Println("State file missing, generating template...")
 		// Create a default initial state
-		s = models.PortfolioState{Version: "1.3", Positions: []models.Position{}}
+		s = models.PortfolioState{Version: "1.4", Positions: []models.Position{}, AutonomousEnabled: true}
 		// Save it immediately so next time we find it
 		SaveState(s)
 		return s, nil
@@ -96,6 +96,14 @@ func migrateState(s *models.PortfolioState) bool {
 	if s.Version < "1.3" {
 		log.Println("INFO: Migrating State Schema from 1.2 to 1.3")
 		s.Version = "1.3"
+		updated = true
+	}
+
+	// Migration: 1.3 -> 1.4 (Enable Autonomous Mode by Default)
+	if s.Version < "1.4" {
+		log.Println("INFO: Migrating State Schema from 1.3 to 1.4: Enabling Autonomous Mode")
+		s.AutonomousEnabled = true
+		s.Version = "1.4"
 		updated = true
 	}
 
