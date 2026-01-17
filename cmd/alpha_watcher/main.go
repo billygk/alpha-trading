@@ -10,7 +10,7 @@ import (
 
 	"alpha_trading/internal/config"
 	"alpha_trading/internal/logger"
-	"alpha_trading/internal/market"
+	"alpha_trading/internal/market/alpaca"
 	"alpha_trading/internal/telegram" // Replaces internal/notifications
 	"alpha_trading/internal/watcher"
 )
@@ -34,8 +34,8 @@ func main() {
 
 	// 2. Setup Dependencies
 	// 4. Initialize Dependency Injection
-	// Market Provider (Alpaca)
-	marketProvider := market.NewAlpacaProvider()
+	// MarketProvider (Alpaca)
+	marketProvider := alpaca.NewProvider()
 
 	// Watcher (The core logic)
 	w := watcher.New(cfg, marketProvider)

@@ -91,10 +91,9 @@ func (w *Watcher) SyncWithBroker() (models.PortfolioState, error) {
 		qty := p.Qty
 		avgEntry := p.AvgEntryPrice
 
-		var currentPrice decimal.Decimal
-		if p.CurrentPrice != nil {
-			currentPrice = *p.CurrentPrice
-		}
+		// Check BrokerPosition fields
+		// In models.BrokerPosition, Qty and AvgEntryPrice are values.
+		currentPrice := p.CurrentPrice // Already value in BrokerPosition
 
 		// HWM Logic
 		hwm := avgEntry

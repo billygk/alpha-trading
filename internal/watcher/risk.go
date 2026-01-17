@@ -8,10 +8,12 @@ import (
 
 	"alpha_trading/internal/ai"
 	"alpha_trading/internal/config"
+	"alpha_trading/internal/models"
 	"alpha_trading/internal/telegram"
 
-	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
 	"github.com/shopspring/decimal"
+	// "github.com/alpacahq/alpaca-trade-api-go/v3/alpaca" // Removed
+	// "github.com/shopspring/decimal" // Already imported
 )
 
 type PendingAction struct {
@@ -45,7 +47,7 @@ func (w *Watcher) checkRisk() {
 			sb.WriteString("⏳ *WAITING FOR MARKET OPEN*\n")
 			for _, o := range openOrders {
 				qtyStr := "0"
-				if o.Qty != nil {
+				if !o.Qty.IsZero() {
 					qtyStr = o.Qty.String()
 				}
 				sb.WriteString(fmt.Sprintf("• %s %s shares of %s are queued.\n", o.Side, qtyStr, o.Symbol))
@@ -95,11 +97,10 @@ func (w *Watcher) checkRisk() {
 				hoursOpen := time.Since(openedAt).Hours()
 				if hoursOpen > float64(w.config.MaxStagnationHours) {
 					var currentPrice decimal.Decimal
-					if ap.CurrentPrice != nil {
-						currentPrice = *ap.CurrentPrice
-					} else {
+					if ap.CurrentPrice.IsZero() {
 						continue
 					}
+					currentPrice = ap.CurrentPrice
 
 					diff := currentPrice.Sub(entryPrice)
 					pct := diff.Div(entryPrice).Mul(decimal.NewFromInt(100))
@@ -171,7 +172,7 @@ func (w *Watcher) ensureSequentialClearance(ticker string) error {
 }
 
 // verifyOrderExecution polls for order status validation (Spec 53).
-func (w *Watcher) verifyOrderExecution(orderID string) (*alpaca.Order, error) {
+func (w *Watcher) verifyOrderExecution(orderID string) (*models.Order, error) {
 	// Query every 1 second for 5 seconds
 	for i := 0; i < 5; i++ {
 		time.Sleep(1 * time.Second)
@@ -337,8 +338,8 @@ func (w *Watcher) handleAIResult(analysis *ai.AIAnalysis, snapshot *ai.Portfolio
 					break
 				}
 				// Spread = (Ask - Bid) / Bid
-				bid := decimal.NewFromFloat(quote.BidPrice)
-				ask := decimal.NewFromFloat(quote.AskPrice)
+				bid := quote.BidPrice
+				ask := quote.AskPrice
 				spread := ask.Sub(bid).Div(bid)
 
 				if spread.GreaterThan(decimal.NewFromFloat(0.005)) {

@@ -241,9 +241,14 @@ func (w *Watcher) handleBuyCallback(data string) string {
 			}
 
 			// Refine EntryPrice if available
-			if verifiedOrder.FilledAvgPrice != nil {
-				newPos.EntryPrice = *verifiedOrder.FilledAvgPrice
-				newPos.HighWaterMark = *verifiedOrder.FilledAvgPrice
+			var finalPrice decimal.Decimal
+			if !verifiedOrder.FilledAvgPrice.IsZero() {
+				finalPrice = verifiedOrder.FilledAvgPrice
+				newPos.EntryPrice = finalPrice
+				newPos.HighWaterMark = finalPrice
+			} else {
+				// Fallback if FilledAvgPrice is zero/unavailable or nil
+				finalPrice = proposal.Price
 			}
 
 			w.mu.Lock()
@@ -331,27 +336,27 @@ func (w *Watcher) handleAICallback(data string) string {
 					output = fmt.Sprintf("⚠️ Clearance failed: %v", err)
 				} else {
 					// 2. Place Order
-				// Parse Optional SL/TP for Manual AI Execution
-				var sl, tp decimal.Decimal
-				if len(parts) >= 4 {
-					sl, _ = decimal.NewFromString(parts[3])
-				}
-				if len(parts) >= 5 {
-					tp, _ = decimal.NewFromString(parts[4])
-				}
-				// Apply Defaults if needed
-				if sl.IsZero() {
-					price, _ := w.provider.GetPrice(ticker)
-					multiplier := decimal.NewFromInt(1).Sub(decimal.NewFromFloat(w.config.DefaultStopLossPct).Div(decimal.NewFromInt(100)))
-					sl = price.Mul(multiplier)
-				}
-				if tp.IsZero() {
-					price, _ := w.provider.GetPrice(ticker)
-					multiplier := decimal.NewFromInt(1).Add(decimal.NewFromFloat(w.config.DefaultTakeProfitPct).Div(decimal.NewFromInt(100)))
-					tp = price.Mul(multiplier)
-				}
+					// Parse Optional SL/TP for Manual AI Execution
+					var sl, tp decimal.Decimal
+					if len(parts) >= 4 {
+						sl, _ = decimal.NewFromString(parts[3])
+					}
+					if len(parts) >= 5 {
+						tp, _ = decimal.NewFromString(parts[4])
+					}
+					// Apply Defaults if needed
+					if sl.IsZero() {
+						price, _ := w.provider.GetPrice(ticker)
+						multiplier := decimal.NewFromInt(1).Sub(decimal.NewFromFloat(w.config.DefaultStopLossPct).Div(decimal.NewFromInt(100)))
+						sl = price.Mul(multiplier)
+					}
+					if tp.IsZero() {
+						price, _ := w.provider.GetPrice(ticker)
+						multiplier := decimal.NewFromInt(1).Add(decimal.NewFromFloat(w.config.DefaultTakeProfitPct).Div(decimal.NewFromInt(100)))
+						tp = price.Mul(multiplier)
+					}
 
-				order, err := w.provider.PlaceOrder(ticker, qty, "buy", sl, tp)
+					order, err := w.provider.PlaceOrder(ticker, qty, "buy", sl, tp)
 					if err != nil {
 						output = fmt.Sprintf("❌ Buy Failed (%s): %v", ticker, err)
 					} else {
@@ -362,9 +367,13 @@ func (w *Watcher) handleAICallback(data string) string {
 						} else {
 							// 4. Update State
 							if strings.EqualFold(verified.Status, "filled") {
+								avgPrice := decimal.Zero
+								if !verified.FilledAvgPrice.IsZero() {
+									avgPrice = verified.FilledAvgPrice
+								}
 								newPos := models.Position{
-									Ticker: ticker, Quantity: qty, EntryPrice: *verified.FilledAvgPrice,
-									Status: "ACTIVE", HighWaterMark: *verified.FilledAvgPrice,
+									Ticker: ticker, Quantity: qty, EntryPrice: avgPrice,
+									Status: "ACTIVE", HighWaterMark: avgPrice,
 									OpenedAt: time.Now(), ThesisID: fmt.Sprintf("AI_%d", time.Now().Unix()),
 									// Defaults (Sync/Update will handle exacts)
 									StopLoss: decimal.Zero, TakeProfit: decimal.Zero, TrailingStopPct: decimal.Zero,
@@ -373,7 +382,7 @@ func (w *Watcher) handleAICallback(data string) string {
 								w.state.Positions = append(w.state.Positions, newPos)
 								w.saveStateLocked()
 								w.mu.Unlock()
-								output = fmt.Sprintf("✅ PURCHASED: %s %s @ $%s", qty, ticker, verified.FilledAvgPrice.StringFixed(2))
+								output = fmt.Sprintf("✅ PURCHASED: %s %s @ $%s", qty, ticker, avgPrice.StringFixed(2))
 							} else {
 								output = fmt.Sprintf("⚠️ Buy Pending (%s): Status %s", ticker, verified.Status)
 							}

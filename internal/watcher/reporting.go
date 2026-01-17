@@ -11,7 +11,6 @@ import (
 	"alpha_trading/internal/models"
 	"alpha_trading/internal/telegram"
 
-	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
 	"github.com/shopspring/decimal"
 )
 
@@ -67,7 +66,7 @@ func (w *Watcher) getStatus() string {
 	}
 	posDetails := make(map[string]detailedPos)
 
-	var clock *alpaca.Clock
+	var clock *models.Clock
 	var equity decimal.Decimal
 	var errClock, errEquity error
 
@@ -92,7 +91,7 @@ func (w *Watcher) getStatus() string {
 
 			prevClose := decimal.Zero
 			if len(bars) > 0 {
-				prevClose = decimal.NewFromFloat(bars[len(bars)-1].Close)
+				prevClose = bars[len(bars)-1].Close
 			}
 
 			mu.Lock()
@@ -211,7 +210,7 @@ func (w *Watcher) getStatus() string {
 			// Spec says use decimal. We used `o.Qty` in handleBuyCommand validation? No, that was `w.provider.ListOrders`.
 			// `o.Qty` is *decimal.Decimal.
 			qtyStr := "0"
-			if o.Qty != nil {
+			if !o.Qty.IsZero() {
 				qtyStr = o.Qty.String()
 			}
 			pendingMsg += fmt.Sprintf("• %s %s %s\n", o.Side, qtyStr, o.Symbol)
@@ -322,6 +321,7 @@ func (w *Watcher) checkEOD() {
 func (w *Watcher) generateAndSendEODReport() {
 	// 1. Fetch Data
 	// Pillar 1: Current Positions (Unrealized)
+	// Note: generic ListPositions returns BrokerPositions (unrealized at broker)
 	positions, err := w.provider.ListPositions()
 	if err != nil {
 		log.Printf("EOD Error: Failed to list positions: %v", err)
@@ -371,12 +371,12 @@ func (w *Watcher) generateAndSendEODReport() {
 		ty, tm, td := ft.Date()
 		if ty == y && tm == m && td == d {
 			price := decimal.Zero
-			if o.FilledAvgPrice != nil {
-				price = *o.FilledAvgPrice
+			if !o.FilledAvgPrice.IsZero() {
+				price = o.FilledAvgPrice
 			}
 			qty := decimal.Zero
-			if o.Qty != nil {
-				qty = *o.Qty
+			if !o.Qty.IsZero() {
+				qty = o.Qty
 			}
 			realizedToday = append(realizedToday, fmt.Sprintf("%s %s %s @ $%s", o.Side, o.Symbol, qty.String(), price.StringFixed(2)))
 		}
@@ -401,11 +401,11 @@ func (w *Watcher) generateAndSendEODReport() {
 		sb.WriteString("`---------------------`\n")
 		for _, p := range positions {
 			dayChange := decimal.Zero
-			if p.ChangeToday != nil {
+			if !p.ChangeToday.IsZero() {
 				dayChange = p.ChangeToday.Mul(decimal.NewFromInt(100))
 			}
 			entry := p.AvgEntryPrice
-			current := *p.CurrentPrice // Assume safe
+			current := p.CurrentPrice // Assume safe
 			totPct := decimal.Zero
 			if !entry.IsZero() {
 				totPct = current.Sub(entry).Div(entry).Mul(decimal.NewFromInt(100))
