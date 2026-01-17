@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
 	"strings"
 	"time"
 
@@ -32,53 +31,53 @@ func (w *Watcher) HandleCommand(cmd string) string {
 	case "/status":
 		w.SyncWithBroker() // Spec 68 JIT
 		return w.getStatus()
-	case "/list":
-		return w.getList()
-	case "/price":
-		if len(parts) < 2 {
-			return "Usage: /price <ticker>"
-		}
-		return w.getPrice(strings.ToUpper(parts[1]))
-	case "/market":
-		return w.getMarketStatus()
-	case "/search":
-		if len(parts) < 2 {
-			return "Usage: /search <query>"
-		}
-		// "Apple Inc" -> "Apple Inc"
-		query := strings.Join(parts[1:], " ")
-		return w.searchAssets(query)
-	case "/help":
-		println("Help command received")
-		return w.getHelp()
 	case "/buy":
 		w.SyncWithBroker() // Spec 68 JIT
 		return w.handleBuyCommand(parts)
 	case "/scan":
 		return w.handleScanCommand(parts)
-	case "/portfolio":
-		return w.handlePortfolioCommand()
 	case "/sell":
 		return w.handleSellCommand(parts)
-	case "/analyze":
-		// Spec 64: Manual AI-Directed Analysis
-		w.SyncWithBroker() // Spec 68 JIT
-		return w.handleAnalyzeCommand(parts)
 	case "/update":
 		return w.handleUpdateCommand(parts)
-	case "/refresh":
-		// Spec 44: Command Purity Enforcement
-		if len(parts) > 1 {
-			return "⚠️ Error: /refresh does not accept parameters. Use /sell then /buy to change settings."
-		}
-		return w.handleRefreshCommand()
 	case "/stop":
 		return w.handleStopCommand()
 	case "/start":
 		return w.handleStartCommand()
+	case "/config":
+		return w.handleConfigCommand()
+	case "/help":
+		return w.getHelp()
 	default:
-		return "Unknown command. Try /buy, /status, /sell, /refresh, /scan, /stop or /start."
+		return "Unknown command. Try /status, /buy, /sell, /scan, /update, /config, /stop or /start."
 	}
+}
+
+func (w *Watcher) handleConfigCommand() string {
+	maskSecret := func(s string) string {
+		if len(s) < 8 {
+			return "****"
+		}
+		return s[:4] + "..." + s[len(s)-4:]
+	}
+
+	return fmt.Sprintf("⚙️ *SYSTEM CONFIGURATION*\n"+
+		"Poll Interval: %d mins\n"+
+		"Log Level: %s\n"+
+		"Max Log Size: %d MB\n"+
+		"Max Backups: %d\n"+
+		"Fiscal Limit: $%0.2f\n"+
+		"Confirmation TTL: %d sec\n"+
+		"Autonomy: %v\n"+
+		"Gemini API: %s",
+		w.config.PollIntervalMins,
+		w.config.LogLevel,
+		w.config.MaxLogSizeMB,
+		w.config.MaxLogBackups,
+		w.config.FiscalBudgetLimit,
+		w.config.ConfirmationTTLSec,
+		w.state.AutonomousEnabled,
+		maskSecret(w.config.GeminiAPIKey))
 }
 
 func (w *Watcher) handleStopCommand() string {
@@ -98,29 +97,38 @@ func (w *Watcher) handleStartCommand() string {
 }
 
 func (w *Watcher) handleScanCommand(parts []string) string {
-	if len(parts) < 2 {
-		return "Usage: /scan <sector>\nAvailable: biotech, metals, energy, defense"
+	// Spec 94: /scan replaces /analyze.
+	// /scan [ticker]
+
+	ticker := ""
+	if len(parts) > 1 {
+		ticker = strings.ToUpper(parts[1])
 	}
 
-	sectorKey := strings.ToLower(parts[1])
-	tickers, exists := sectors[sectorKey]
-	if !exists {
-		return fmt.Sprintf("⚠️ Unknown sector '%s'.\nAvailable: biotech, metals, energy, defense", sectorKey)
-	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
 
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("🔋 *SECTOR REPORT: %s*\n", strings.ToUpper(sectorKey)))
-
-	for _, ticker := range tickers {
-		price, err := w.provider.GetPrice(ticker)
-		if err != nil {
-			sb.WriteString(fmt.Sprintf("• %s: ⚠️ Err\n", ticker))
-			continue
+	// Reuse Cooldown Check from old analyze command
+	lastRun, exists := w.lastAnalyzeTime["GLOBAL"]
+	if exists {
+		elapsed := time.Since(lastRun)
+		if elapsed < 10*time.Minute {
+			remaining := (10 * time.Minute) - elapsed
+			return fmt.Sprintf("⏳ Analysis cooling down. Next available in %.0fs.", remaining.Seconds())
 		}
-		sb.WriteString(fmt.Sprintf("• %s: $%s\n", ticker, price.StringFixed(2)))
 	}
 
-	return sb.String()
+	w.lastAnalyzeTime["GLOBAL"] = time.Now()
+
+	// Trigger Async
+	go w.runAIAnalysis(ticker, true)
+
+	contextMsg := "Global Review"
+	if ticker != "" {
+		contextMsg = fmt.Sprintf("Focus: %s", ticker)
+	}
+
+	return fmt.Sprintf("⏳ AI Analysis Initiated (%s)... Stand by for report.", contextMsg)
 }
 
 func (w *Watcher) handleBuyCommand(parts []string) string {
@@ -445,97 +453,3 @@ func (w *Watcher) handleUpdateCommand(parts []string) string {
 		ticker, sl.StringFixed(2), tp.StringFixed(2))
 }
 
-func (w *Watcher) handleRefreshCommand() string {
-	count, discovered, err := w.syncState()
-	if err != nil {
-		return fmt.Sprintf("❌ Failed to sync state: %v", err)
-	}
-
-	msg := fmt.Sprintf("🔄 Strict Mirror Sync Complete: Local state aligned with Alpaca (%d active positions).", count)
-	if len(discovered) > 0 {
-		msg += fmt.Sprintf("\n⚠️ Imported & Protected: %s", strings.Join(discovered, ", "))
-	}
-
-	return msg
-}
-
-// handlePortfolioCommand implements Spec 50: Raw State Inspection
-// It reads the local portfolio_state.json and returns it as a code block.
-// Refined Logic: Chunks content if > 3900 chars (Spec 50 Refinement).
-func (w *Watcher) handlePortfolioCommand() string {
-	// 1. Read the file
-	data, err := os.ReadFile("portfolio_state.json")
-	if err != nil {
-		log.Printf("Error reading portfolio_state.json: %v", err)
-		return fmt.Sprintf("⚠️ Failed to read local state file: %v", err)
-	}
-
-	content := string(data)
-	contentLen := len(content)
-	chunkSize := 3900
-
-	// 2. Simple Case: Fits in one message
-	if contentLen <= chunkSize {
-		return fmt.Sprintf("Portfolio State JSON (Part 1/1):\n```json\n%s\n```", content)
-	}
-
-	// 3. Complex Case: Multi-part Chunking
-	chunks := (contentLen + chunkSize - 1) / chunkSize // ceil division
-
-	for i := 0; i < chunks; i++ {
-		start := i * chunkSize
-		end := start + chunkSize
-		if end > contentLen {
-			end = contentLen
-		}
-
-		chunk := content[start:end]
-		msg := fmt.Sprintf("Portfolio State JSON (Part %d/%d):\n```json\n%s\n```", i+1, chunks, chunk)
-
-		// Proactively send to avoid return-value size limits or timeouts
-		// Telegram API rate limits might hit if chunks are plenty, but for state.json (<100KB) it's fine.
-		telegram.Notify(msg)
-
-		// Small sleep to ensure ordering (Telegram API race condition mitigation)
-		time.Sleep(200 * time.Millisecond)
-	}
-
-	return "" // Handled proactively
-}
-
-// handleAnalyzeCommand implements Spec 64.
-func (w *Watcher) handleAnalyzeCommand(parts []string) string {
-	// Parse optional ticker: /analyze [ticker]
-	ticker := ""
-	if len(parts) > 1 {
-		ticker = strings.ToUpper(parts[1])
-	}
-
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	// Cooldown Check (Global for simplicity, or per user if we had user ID context properly passed)
-	// Spec 605: "600-second (10-minute) cooldown per user."
-	// Since this bot is single-tenant (TELEGRAM_CHAT_ID check in listener), global is "per user".
-	lastRun, exists := w.lastAnalyzeTime["GLOBAL"]
-	if exists {
-		elapsed := time.Since(lastRun)
-		if elapsed < 10*time.Minute {
-			remaining := (10 * time.Minute) - elapsed
-			return fmt.Sprintf("⏳ Analysis cooling down. Next available in %.0fs.", remaining.Seconds())
-		}
-	}
-
-	// Update timestamp
-	w.lastAnalyzeTime["GLOBAL"] = time.Now()
-
-	// Trigger Async
-	go w.runAIAnalysis(ticker, true)
-
-	contextMsg := "Global Review"
-	if ticker != "" {
-		contextMsg = fmt.Sprintf("Focus: %s", ticker)
-	}
-
-	return fmt.Sprintf("⏳ AI Analysis Initiated (%s)... Stand by for report.", contextMsg)
-}

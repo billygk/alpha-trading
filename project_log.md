@@ -568,3 +568,14 @@ Result:
 - **Spec 85 (Guardrails)**: Implemented Slippage Check (0.5% max) for autonomous buys.
 Next Steps: Deploy and Validate Autonomy.
 ---
+
+---
+Date: 2026-01-16
+Action: Implemented Specs 93-96 (Multi-Broker Risk, Command Refactoring, Persistence)
+Result:
+- **Spec 93 (Multi-Broker Risk)**: Added `UpdatePositionRisk` to Market Interface. Implemented OCO Order support in Alpaca provider.
+- **Spec 94 (Command Suite Gen 2)**: Streamlined Telegram commands. Removed legacy analysis commands. `/scan` now triggers AI.
+- **Spec 95 (Help Registry)**: Updated `/help` to reflect new command set.
+- **Spec 96 (Autonomous Persistence)**: Added persistence for `/start` and `/stop` autonomy states.
+Next Steps: Deploy and Validate.
+---
