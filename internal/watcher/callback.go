@@ -2,6 +2,7 @@ package watcher
 
 import (
 	"alpha_trading/internal/models"
+	"alpha_trading/internal/telegram"
 	"fmt"
 	"log"
 	"strings"
@@ -127,6 +128,9 @@ func (w *Watcher) HandleCallback(callbackID, data string) string {
 			return msg
 		}
 
+		// Spec 99.3: Order Lifecycle - Placed
+		telegram.Notify(fmt.Sprintf("⏳ ORDER PLACED: %s | SELL | Qty: %s", ticker, qty.StringFixed(2)))
+
 		// Spec 53: Execution Verification
 		verifiedOrder, err := w.verifyOrderExecution(order.ID)
 		if err != nil {
@@ -161,7 +165,8 @@ func (w *Watcher) HandleCallback(callbackID, data string) string {
 			}
 			w.mu.Unlock()
 
-			return fmt.Sprintf("✅ ORDER PLACED: Sold %s at Market (Filled).", ticker)
+			// Spec 99.3: Order Lifecycle - Filled
+			return fmt.Sprintf("✅ ORDER FILLED: %s @ $%s (Sold)", ticker, verifiedOrder.FilledAvgPrice.StringFixed(2))
 		}
 
 		return fmt.Sprintf("⚠️ Order Placed but not yet Filled (Status: %s). Position remains ACTIVE.", status)
@@ -212,6 +217,9 @@ func (w *Watcher) handleBuyCallback(data string) string {
 			return msg
 		}
 
+		// Spec 99.3: Order Lifecycle - Placed
+		telegram.Notify(fmt.Sprintf("⏳ ORDER PLACED: %s | BUY | Qty: %s", ticker, proposal.Qty.StringFixed(2)))
+
 		// Spec 53: Execution Verification
 		verifiedOrder, err := w.verifyOrderExecution(order.ID)
 		if err != nil {
@@ -256,8 +264,7 @@ func (w *Watcher) handleBuyCallback(data string) string {
 			w.saveStateLocked()
 			w.mu.Unlock()
 
-			return fmt.Sprintf("✅ PURCHASED: %s %s @ Market (Filled).\nStatus: %s\nSL: $%s | TP: $%s\nTracking Active.",
-				proposal.Qty.StringFixed(2), ticker, status, proposal.StopLoss.StringFixed(2), proposal.TakeProfit.StringFixed(2))
+			return fmt.Sprintf("✅ ORDER FILLED: %s @ $%s", ticker, finalPrice.StringFixed(2))
 		}
 
 		return fmt.Sprintf("⚠️ Buy Order Placed but not yet Filled (Status: %s). Position NOT yet tracked. Check /refresh later.", status)
@@ -360,6 +367,9 @@ func (w *Watcher) handleAICallback(data string) string {
 					if err != nil {
 						output = fmt.Sprintf("❌ Buy Failed (%s): %v", ticker, err)
 					} else {
+						// Spec 99.3: Order Lifecycle - Placed
+						telegram.Notify(fmt.Sprintf("⏳ ORDER PLACED: %s | BUY | Qty: %s", ticker, qty.StringFixed(2)))
+
 						// 3. Verify
 						verified, vErr := w.verifyOrderExecution(order.ID)
 						if vErr != nil {
@@ -382,7 +392,7 @@ func (w *Watcher) handleAICallback(data string) string {
 								w.state.Positions = append(w.state.Positions, newPos)
 								w.saveStateLocked()
 								w.mu.Unlock()
-								output = fmt.Sprintf("✅ PURCHASED: %s %s @ $%s", qty, ticker, avgPrice.StringFixed(2))
+								output = fmt.Sprintf("✅ ORDER FILLED: %s @ $%s", ticker, avgPrice.StringFixed(2))
 							} else {
 								output = fmt.Sprintf("⚠️ Buy Pending (%s): Status %s", ticker, verified.Status)
 							}

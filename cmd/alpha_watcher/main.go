@@ -55,12 +55,17 @@ func main() {
 
 	go func() {
 		<-c
+		// Spec 99.1: Shutdown Notification
+		w.SendShutdownNotification()
 		log.Println("⚠️ Watcher Shutting Down: System signal received.")
 		cancel() // Cancel context to stop main loop
 	}()
 
 	log.Printf("Alpha Watcher %s Initialized", cfg.Version)
 	log.Printf("Polling Interval: %d mins (Fallback)", cfg.PollIntervalMins)
+
+	// Spec 99.1: Startup Notification
+	w.SendStartupNotification()
 
 	// 5. Main Loop
 	// Listen for context cancellation or ticker

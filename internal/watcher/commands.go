@@ -85,7 +85,7 @@ func (w *Watcher) handleStopCommand() string {
 	w.state.AutonomousEnabled = false
 	w.saveStateLocked()
 	w.mu.Unlock()
-	return "🛑 AUTONOMY DISABLED. Revert to manual mode."
+	return "⏸️ AUTONOMY DISABLED"
 }
 
 func (w *Watcher) handleStartCommand() string {
@@ -93,7 +93,7 @@ func (w *Watcher) handleStartCommand() string {
 	w.state.AutonomousEnabled = true
 	w.saveStateLocked()
 	w.mu.Unlock()
-	return "✅ AUTONOMY ENABLED. AI Execution Active."
+	return "⚡ AUTONOMY ENABLED"
 }
 
 func (w *Watcher) handleScanCommand(parts []string) string {
@@ -457,6 +457,7 @@ func (w *Watcher) handleUpdateCommand(parts []string) string {
 	}
 
 	// Spec 51: Explicit confirmation format
-	return fmt.Sprintf("✅ Parameters Updated for %s.\nNew Floor (SL): $%s | New Ceiling (TP): $%s",
+	// Spec 99.3: Risk Adjustment
+	return fmt.Sprintf("🛡️ RISK UPDATED: %s | New SL: $%s | New TP: $%s",
 		ticker, sl.StringFixed(2), tp.StringFixed(2))
 }

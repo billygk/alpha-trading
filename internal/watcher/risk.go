@@ -279,24 +279,26 @@ func (w *Watcher) handleAIResult(analysis *ai.AIAnalysis, snapshot *ai.Portfolio
 	// "Tier 2: Confidence > 0.7 but HOLD ... Notification: SILENT"
 
 	if analysis.Recommendation == "HOLD" {
-		// Tier 2: Silent Notification (or just log per user preference, Spec says Silent Notification? Telemetry?
-		// "Notification: SILENT" usually means send without sound or just log if no silent mode implemented.
-		// "Tier 3: Low Priority ... (LOG ONLY)".
-		// Let's just log HOLDs with high confidence for now to avoid spam, unless user wants debug.
-		log.Printf("AI STRATEGY: HOLD %s. Critique: %s", ticker, analysis.Analysis)
-		if isManual {
-			telegram.Notify(fmt.Sprintf("🤖 AI Analysis: Recommends HOLD (Confidence: %.2f)\nCritique: %s", analysis.ConfidenceScore, analysis.Analysis))
+		// Spec 99.6: Quiet Mode Logic
+		// If HOLD and Confidence > 0.90, suppress unless manual.
+		if analysis.ConfidenceScore > 0.90 && !isManual {
+			log.Printf("AI STRATEGY: HOLD %s (Quiet Mode > 0.90). Critique: %s", ticker, analysis.Analysis)
+			return
 		}
+
+		// Tier 2: Notify (Silently implied if possible, otherwise normal)
+		log.Printf("AI STRATEGY: HOLD %s. Critique: %s", ticker, analysis.Analysis)
+		telegram.Notify(fmt.Sprintf("🤖 AI DECISION: HOLD %s\nConviction: %.2f\nCritique: %s", ticker, analysis.ConfidenceScore, analysis.Analysis))
 		return
 	}
 
 	// Tier 1: Actionable
-	msg := fmt.Sprintf("🤖 *AI STRATEGY REPORT: %s*\n"+
+	// Spec 99.3: Decision Event Format
+	msg := fmt.Sprintf("🤖 AI DECISION: %s %s\n"+
 		"Conviction: %.2f | Risk: %s\n"+
 		"Critique: %s\n"+
-		"Recommendation: %s\n"+
 		"Command: `%s`",
-		ticker, analysis.ConfidenceScore, analysis.RiskAssessment, analysis.Analysis, analysis.Recommendation, analysis.ActionCommand)
+		analysis.Recommendation, ticker, analysis.ConfidenceScore, analysis.RiskAssessment, analysis.Analysis, analysis.ActionCommand)
 
 	if totalBatchCost.GreaterThan(decimal.Zero) {
 		msg += fmt.Sprintf("\n💰 **Total Batch Cost**: $%s", totalBatchCost.StringFixed(2))

@@ -3,11 +3,13 @@ package watcher
 import (
 	"fmt"
 	"log"
+	"math"
 	"strings"
 	"time"
 
 	"alpha_trading/internal/models"
 	"alpha_trading/internal/storage"
+	"alpha_trading/internal/telegram"
 
 	"github.com/shopspring/decimal"
 )
@@ -164,10 +166,15 @@ func (w *Watcher) SyncWithBroker() (models.PortfolioState, error) {
 	// Spec 72: Watchlist Price Grounding (Env & State)
 	// Refresh Logic: Fetch LatestTrade for all tickers in WATCHLIST_TICKERS and update the local state.
 	// We do this AFTER reconciling positions, but before saving.
+	// Spec 99.2: Price Updates Consolidated Block
 	if len(w.config.WatchlistTickers) > 0 {
 		if w.state.WatchlistPrices == nil {
 			w.state.WatchlistPrices = make(map[string]float64)
 		}
+
+		var snapshotMsg strings.Builder
+		hasSignificantChange := false
+
 		for _, ticker := range w.config.WatchlistTickers {
 			ticker = strings.ToUpper(strings.TrimSpace(ticker))
 			if ticker == "" {
@@ -179,8 +186,27 @@ func (w *Watcher) SyncWithBroker() (models.PortfolioState, error) {
 				log.Printf("Watchlist Warning: Could not fetch price for %s: %v", ticker, err)
 				continue
 			}
-			f, _ := priceDec.Float64()
-			w.state.WatchlistPrices[ticker] = f
+			newPrice, _ := priceDec.Float64()
+			oldPrice := w.state.WatchlistPrices[ticker]
+
+			// Calculate change
+			if oldPrice > 0 {
+				pctChange := (newPrice - oldPrice) / oldPrice * 100.0
+				if math.Abs(pctChange) > 0.5 {
+					hasSignificantChange = true
+					icon := "▲"
+					if pctChange < 0 {
+						icon = "▼"
+					}
+					snapshotMsg.WriteString(fmt.Sprintf("- %s: $%s (%s%.1f%%)\n", ticker, priceDec.StringFixed(2), icon, math.Abs(pctChange)))
+				}
+			}
+
+			w.state.WatchlistPrices[ticker] = newPrice
+		}
+
+		if hasSignificantChange {
+			telegram.Notify(fmt.Sprintf("📊 MARKET SNAPSHOT:\n%s", snapshotMsg.String()))
 		}
 	}
 
