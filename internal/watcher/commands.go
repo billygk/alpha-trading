@@ -371,22 +371,16 @@ func (w *Watcher) handleSellCommand(parts []string) string {
 }
 
 func (w *Watcher) handleUpdateCommand(parts []string) string {
-	// /update AAPL 200 250 [5.0]
+	// /update AAPL 200 250
 	if len(parts) < 4 {
-		return "Usage: /update <ticker> <sl> <tp> [ts_pct]"
+		return "Usage: /update <ticker> <sl> <tp>"
 	}
 
 	ticker := strings.ToUpper(parts[1])
 	sl, err1 := decimal.NewFromString(parts[2])
 	tp, err2 := decimal.NewFromString(parts[3])
 
-	var tsPct decimal.Decimal
-	var err3 error
-	if len(parts) >= 5 {
-		tsPct, err3 = decimal.NewFromString(parts[4])
-	}
-
-	if err1 != nil || err2 != nil || err3 != nil {
+	if err1 != nil || err2 != nil {
 		return "⚠️ Invalid number format."
 	}
 
@@ -412,11 +406,42 @@ func (w *Watcher) handleUpdateCommand(parts []string) string {
 		return "❌ Logic Error: Take Profit must be higher than Stop Loss."
 	}
 
+	// --- Spec 82: SL Monotonicity Guardrail (Pre-Flight) ---
+	// Check local state before calling broker to prevent risk expansion.
+	w.mu.RLock()
+	var currentSL decimal.Decimal
+	var found bool
+	var foundIndex int
+	for i, p := range w.state.Positions {
+		if p.Ticker == ticker && p.Status == "ACTIVE" {
+			foundIndex = i
+			found = true
+			currentSL = p.StopLoss
+			break
+		}
+	}
+	w.mu.RUnlock()
+
+	if found {
+		// "Prevent SL Decay: New_SL >= Current_SL"
+		if !sl.GreaterThanOrEqual(currentSL) && !currentSL.IsZero() {
+			return fmt.Sprintf("❌ CRITICAL_RISK_VIOLATION (Spec 82):\nCannot lower Stop Loss.\nCurrent: $%s\nRequested: $%s\nMotion denied to prevent risk expansion.",
+				currentSL.StringFixed(2), sl.StringFixed(2))
+		}
+	}
+
+	// --- Spec 93: Multi-Broker Risk Update ---
+	// Call Provider to update risk on exchange
+	if err := w.provider.UpdatePositionRisk(ticker, sl, tp); err != nil {
+		return fmt.Sprintf("❌ Broker Update Failed: %v", err)
+	}
+
+	// Update Local State for Dashboard Consistency
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	found := false
-	var foundIndex int
+	// Re-find index (safe pattern)
+	found = false
 	for i, p := range w.state.Positions {
 		if p.Ticker == ticker && p.Status == "ACTIVE" {
 			foundIndex = i
@@ -425,31 +450,13 @@ func (w *Watcher) handleUpdateCommand(parts []string) string {
 		}
 	}
 
-	if !found {
-		return fmt.Sprintf("⚠️ No active position found for %s (or check portfolio_state.json).", ticker)
-	}
-
-	// Spec 82: SL Monotonicity Guardrail
-	// "Prevent SL Decay: New_SL >= Current_SL"
-	currentSL := w.state.Positions[foundIndex].StopLoss
-	if !sl.GreaterThanOrEqual(currentSL) && !currentSL.IsZero() {
-		// Reject
-		return fmt.Sprintf("❌ CRITICAL_RISK_VIOLATION (Spec 82):\nCannot lower Stop Loss.\nCurrent: $%s\nRequested: $%s\nMotion denied to prevent risk expansion.",
-			currentSL.StringFixed(2), sl.StringFixed(2))
-	}
-
-	// Validate Logical Consistency again with locked state?
-	// We did it with input params.
-
-	w.state.Positions[foundIndex].StopLoss = sl
-	w.state.Positions[foundIndex].TakeProfit = tp
-	if len(parts) >= 5 {
-		w.state.Positions[foundIndex].TrailingStopPct = tsPct
+	if found {
+		w.state.Positions[foundIndex].StopLoss = sl
+		w.state.Positions[foundIndex].TakeProfit = tp
+		w.saveStateLocked()
 	}
 
 	// Spec 51: Explicit confirmation format
-	w.saveStateLocked()
 	return fmt.Sprintf("✅ Parameters Updated for %s.\nNew Floor (SL): $%s | New Ceiling (TP): $%s",
 		ticker, sl.StringFixed(2), tp.StringFixed(2))
 }
-

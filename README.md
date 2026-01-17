@@ -144,34 +144,21 @@ Proposes a new long position.
 ### `/sell <ticker>`
 **Universal Exit**. Liquidates position, cancels pending orders, and **purges** local state (Spec 57). Archives deleted position to `daily_performance.log`.
 
-### `/refresh`
-Force-syncs local state with Alpaca.
-- **Note**: Accepts NO parameters. To change risk settings, use `/sell` then `/buy`.
-- **Clean**: Removes local positions not found on broker.
-- **Import**: Adds broker positions not found locally (assigns default SL/TP).
-- **Update**: Re-syncs `Qty` and `EntryPrice`.
-
-### `/update <ticker> <sl> <tp> [ts_pct]`
+### `/update <ticker> <sl> <tp>`
 Manually update the risk parameters for an active position.
 - **Safety Gates**: Validates that `New SL < Current Price` and `New TP > Current Price`.
-- **Example**: `/update NVDA 120 160 5` (Set SL $120, TP $160, TS 5%)
+- **Example**: `/update NVDA 120 160` (Set SL $120, TP $160)
 
-
-### `/scan <sector>`
-(Experimental) Checks sector health/sentiment.
-
-### `/analyze [ticker]`
-(Spec 64) Manually trigger an AI Portfolio Review.
-- **Cool-down**: 10 minutes between calls.
+### `/scan [ticker]`
+Triggers an AI Portfolio Review & Autonomous Rotation.
 - **Context**: Optional [ticker] focuses the AI's analysis on a specific asset.
-- **Bypass**: Runs even if market is closed (Temporal Gate Override).
+- **Autonomy**: If enabled (and confidence high), executes trades immediately.
 
-### `/portfolio`
-Dump the raw `portfolio_state.json` file for debugging purposes.
-- **Chunking**: Output is split into multiple messages if the file exceeds 3900 characters.
+### `/config`
+Inspect current system parameters and autonomy status.
 
 ### `/stop`
-**Emergency Brake**. Disables autonomous execution immediately. The bot reverts to Manual/Suggestion mode.
+**Killswitch**. Disables autonomous execution immediately. The bot reverts to Manual/Suggestion mode.
 
 ### `/start`
 Re-enables autonomous execution.
