@@ -181,15 +181,53 @@ func (w *Watcher) Poll() {
 	}
 }
 
+func (w *Watcher) SendStartupNotification() {
+	equity, err := w.provider.GetEquity()
+	if err != nil {
+		log.Printf("Startup Warning: Could not fetch equity: %v", err)
+	}
+	bp, err := w.provider.GetBuyingPower()
+	if err != nil {
+		log.Printf("Startup Warning: Could not fetch BP: %v", err)
+	}
+
+	mode := "MANUAL"
+	if w.IsAutonomousEnabled() {
+		mode = "AUTONOMOUS"
+	}
+
+	msg := fmt.Sprintf("🚀 *SYSTEM START: Alpha Watcher %s online*\nMode: [%s]\nEquity: $%s | BP: $%s",
+		w.config.Version, mode, equity.StringFixed(2), bp.StringFixed(2))
+	telegram.Notify(msg)
+}
+
+func (w *Watcher) SendShutdownNotification() {
+	w.mu.Lock()
+	w.saveStateLocked()
+	w.mu.Unlock()
+	telegram.Notify("🛑 SYSTEM SHUTDOWN: Signal received. State saved successfully.")
+}
+
+func (w *Watcher) IsAutonomousEnabled() bool {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	return w.state.AutonomousEnabled
+}
+
 func (w *Watcher) runAIAnalysis(ticker string, isManual bool) {
 	// Spec 96: Logic Guard for Autonomous Execution
-	if !isManual && !w.state.AutonomousEnabled {
+	if !isManual && !w.IsAutonomousEnabled() {
 		return
 	}
 
 	// Spec 58 & 64: AI Analysis Loop
 	if w.config.GeminiAPIKey == "" {
 		return
+	}
+
+	// Spec 99.2: Analysis Start Heartbeat
+	if !isManual {
+		telegram.Notify("🔍 SCAN INITIATED: Performing portfolio review and sector check...")
 	}
 
 	// 1. Gather Data (Snapshot)
@@ -219,6 +257,9 @@ func (w *Watcher) runAIAnalysis(ticker string, isManual bool) {
 	if ticker != "" {
 		contextMsg = fmt.Sprintf("\nFOCUS_CONTEXT: The user requested a specific analysis for %s. Please prioritize this asset in your review.", ticker)
 	}
+
+	// Spec 99.2: AI Interaction Heartbeat
+	telegram.Notify("🤖 CONSULTING AI: Sending context to Gemini 2.5 Flash...")
 
 	analysis, err := aiClient.AnalyzePortfolio(string(sysInstr)+contextMsg, *snapshot)
 	if err != nil {
