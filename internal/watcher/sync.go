@@ -25,20 +25,6 @@ func (w *Watcher) saveState() {
 // saveStateLocked persists the current state to disk with updated metrics.
 // It assumes w.mu is ALREADY LOCKED by the caller.
 func (w *Watcher) saveStateLocked() {
-	// Spec 65: Update Budget Metrics before save
-	// Calculate Exposure
-	currentExposure := decimal.Zero
-	for _, p := range w.state.Positions {
-		if p.Status == "ACTIVE" {
-			cost := p.Quantity.Mul(p.EntryPrice)
-			currentExposure = currentExposure.Add(cost)
-		}
-	}
-
-	w.state.CurrentExposure = currentExposure
-	// Spec 90: AvailableBudget is updated by JIT Sync (SyncWithBroker) using BuyingPower.
-	// We do NOT recalculate it here to avoid overwriting with legacy formula.
-
 	storage.SaveState(w.state)
 }
 
@@ -78,11 +64,6 @@ func (w *Watcher) getPrice(ticker string) string {
 // Returns the updated portfolio state.
 func (w *Watcher) SyncWithBroker() (models.PortfolioState, error) {
 	// 1. Fetch Data in Parallel (could use goroutines, but sequential is safer/easier for now)
-	account, err := w.provider.GetAccount()
-	if err != nil {
-		return w.state, fmt.Errorf("JIT Sync: Failed to get account: %v", err)
-	}
-
 	positions, err := w.provider.ListPositions()
 	if err != nil {
 		return w.state, fmt.Errorf("JIT Sync: Failed to list positions: %v", err)
@@ -104,7 +85,6 @@ func (w *Watcher) SyncWithBroker() (models.PortfolioState, error) {
 	}
 
 	newPositions := []models.Position{}
-	var currentExposure decimal.Decimal // For Spec 69
 
 	for _, p := range positions {
 		ticker := p.Symbol
@@ -115,11 +95,6 @@ func (w *Watcher) SyncWithBroker() (models.PortfolioState, error) {
 		if p.CurrentPrice != nil {
 			currentPrice = *p.CurrentPrice
 		}
-
-		// Calculate Cost for Exposure (Spec 69)
-		// Exposure = Qty * EntryPrice (Cost Basis)
-		cost := qty.Mul(avgEntry)
-		currentExposure = currentExposure.Add(cost)
 
 		// HWM Logic
 		hwm := avgEntry
@@ -186,13 +161,6 @@ func (w *Watcher) SyncWithBroker() (models.PortfolioState, error) {
 	}
 
 	w.state.Positions = newPositions
-
-	// Spec 90: Removal of Fiscal Guardrails (Account-Scale Trading)
-	// The AvailableBudget calculation is simplified to AvailableBudget = Alpaca_Buying_Power.
-	// We decommission Spec 63/77 logic.
-
-	w.state.CurrentExposure = currentExposure
-	w.state.AvailableBudget = account.BuyingPower
 
 	// Spec 72: Watchlist Price Grounding (Env & State)
 	// Refresh Logic: Fetch LatestTrade for all tickers in WATCHLIST_TICKERS and update the local state.
