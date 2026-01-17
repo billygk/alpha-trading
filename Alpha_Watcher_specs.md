@@ -724,3 +724,65 @@ Enforcement: If New_SL < Current_SL, the bot must reject the update with a [CRIT
 Exception: The only permitted downward move is if a position is completely closed and re-opened.
 AI Instruction: Update the AI prompt to explicitly state: "You are FORBIDDEN from lowering a Stop Loss once it is set. If the market moves against a position, either HOLD or recommend SELL."
 
+## 83. Transition to Full Autonomy (The "Auto-Pilot" Shift)
+Objective: Remove human intervention from the trade execution loop.
+Logic:
+Decommission: Spec 18, 60, and 38 (Confirm-to-Trade gates) are now toggled to AUTOMATIC for AI-driven actions.
+Bypass: The CONFIRMATION_TTL_SEC (Spec 39) is ignored for autonomous actions.
+Execution: Upon receiving a valid AI recommendation (Spec 59) with confidence_score >= 0.70, the bot MUST immediately initiate the action_command sequence without waiting for a Telegram callback.
+
+## 84. Autonomous Execution Pipeline
+Implementation:
+The bot must parse the action_command and execute sequentially (Spec 81).
+Audit Trail: Every autonomous action MUST be preceded by a Telegram notification: "🤖 AI EXECUTION START: {{ticker}} | {{action}}."
+Result Reporting: Upon completion (or failure), the bot must send a follow-up: "✅ AI EXECUTION SUCCESS" or "❌ AI EXECUTION FAILED: {{reason}}."
+
+## 85. Autonomous Slippage & Liquidity Guardrails
+Objective: Prevent "Bad Fills" in an un-attended environment.
+Implementation:
+Slippage Gate: Before executing an autonomous Market Order, the bot must fetch the latest Bid/Ask spread.
+Constraint: If (Ask - Bid) / Bid > 0.005 (0.5% spread), the bot must ABORT the autonomous execution and notify the user: "⚠️ High Spread detected. Autonomy paused for {{ticker}}."
+Price Protection: The Deviation Gate (Spec 18.4) must be checked programmatically against the watchlist_prices (Spec 72) immediately before the order call.
+
+## 86. The "Emergency Brake" (Global Killswitch)
+Objective: Allow the user to stop the autonomous bot instantly via Telegram.
+Command: /stop.
+Logic:
+Setting this flag in memory MUST prevent all future autonomous executions.
+The bot must respond with: "🛑 AUTONOMY DISABLED. Revert to manual mode."
+Command: /start re-enables autonomous mode.
+
+## 87. Telegram Role Reversal (Notification First)
+Objective: Redefine the UI to prioritize telemetry over interaction.
+Implementation:
+The bot remains passive in Telegram until an action is taken or a critical error occurs.
+The /status and /portfolio commands remain active for manual oversight.
+Manual trades (/buy, /sell, /update) still take absolute precedence over pending AI logic.
+
+## 88. Broker-as-Truth (State Decommissioning)
+Objective: Shift the source of truth for positions and risk parameters from local JSON to the Alpaca Broker.
+Implementation:
+Decommission: The "Virtual" SL/TP monitoring logic (Spec 20/21) is deprecated.
+Truth Source: The bot must rely exclusively on alpaca.ListPositions() and alpaca.ListOrders() to determine current risk.
+Sync: The portfolio_state.json is now relegated to a "History & Metadata" log rather than an active monitoring control.
+
+## 89. Native Broker Risk Management (Bracket Orders)
+Objective: Leverage Alpaca's native server-side SL/TP functionality.
+Implementation:
+Order Construction: Every /buy command (Manual or AI) MUST be executed as an Alpaca Bracket Order.
+Parameters: stop_loss and take_profit prices must be passed directly to the alpaca.PlaceOrder request using the StopLoss and TakeProfit nested structs.
+Legacy Position Handling: For any position "discovered" without a native bracket, the bot must attempt to place a LimitOrder (TP) and StopOrder (SL) manually to "Wrap" the position in broker-side protection.
+
+## 90. Removal of Fiscal Guardrails (Account-Scale Trading)
+Objective: Allow the bot to trade the full available balance of the Alpaca account.
+Implementation:
+Decommission: Spec 63 ($300 Hard-Stop) is removed.
+Budget Logic: The AvailableBudget calculation (Spec 69/77) is simplified to AvailableBudget = Alpaca_Buying_Power.
+Sizing: The AI is now instructed to use the full account_equity for its allocation math.
+
+## 91. Autonomous Rotation Resilience
+Objective: Ensure the bot can rotate capital between "locked" native orders.
+Implementation:
+Before executing a /buy that requires a preceding /sell (Rotation - Spec 67), the bot MUST explicitly check for and cancel any open orders (Bracket, Stop, Limit) associated with the ticker being sold.
+Wait for order cancellation confirmation before proceeding to the liquidation and subsequent purchase.
+
