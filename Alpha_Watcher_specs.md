@@ -794,3 +794,39 @@ Logic Refactor: All functions previously checking AvailableBudget (Spec 22, 26, 
 The "Truth" Variable: AvailableBudget is now a volatile, runtime-only value derived from account.NonMarginableBuyingPower.
 AI Instruction: Update the AI system instruction to stop referencing a "$300 limit" and instead focus on the account_equity and buying_power provided in the dynamic JSON payload.
 
+## 93. Multi-Broker SL/TP Abstraction
+Objective: Standardize native risk management across different brokerages via the MarketProvider interface.
+Implementation:
+Interface Update: Add UpdatePositionRisk(ticker string, sl, tp decimal.Decimal) error to the MarketProvider interface.
+Alpaca Implementation: This method must cancel existing Stop or Limit orders for the ticker and place a new Bracket Order or associated "Oversight" orders.
+Fallthrough: If a broker doesn't support native brackets, the provider must implement a "Virtual" fallback or return a NotSupported error.
+
+## 94. Command Suite Refactoring (Gen 2)
+Objective: Streamline the Telegram interface for autonomous operation.
+Implementation:
+Consolidation:
+/status: Now the primary dashboard. Integrates account equity, market clock, and active positions. Replaces the functionality of /portfolio.
+/scan: The new trigger for AI analysis. Replaces /analyze. It must fetch fresh data, perform the review, and (if autonomy is on) execute trades.
+Removals: Delete the following commands from the registry: /list, /price, /market, /search, /portfolio, /analyze, /refresh.
+New Command: /config: Displays current operational settings (PollInterval, LogLevel, etc.). MANDATORY: Mask all secrets (API Keys, Tokens) using a maskSecret helper (e.g., APCA_...XXXX).
+
+## 95. Help Registry Update (Gen 2)
+Objective: Maintain accurate documentation for the streamlined interface.
+Registry (Required):
+/ping: Connectivity check.
+/status: Detailed broker-native dashboard.
+/buy <ticker> <qty> [sl] [tp]: Manual entry (native bracket).
+/sell <ticker>: Universal exit (cancels orders + liquidates).
+/update <ticker> <sl> <tp>: Mutate native risk parameters.
+/scan: Trigger AI Portfolio Review & Autonomous Rotation.
+/stop: Killswitch. Disables all autonomous execution.
+/start: Enable autonomous execution.
+/config: Inspect system parameters.
+
+## 96. Autonomous Start/Stop Persistence
+Objective: Ensure the "Emergency Brake" survives a bot restart.
+Implementation:
+Add AutonomyEnabled (bool) to portfolio_state.json.
+The /stop command sets this to false and saves state.
+The /start command sets this to true and saves state.
+Logic Guard: The autonomous loop (Spec 83) MUST check this flag before calling the AI or executing trade commands.
