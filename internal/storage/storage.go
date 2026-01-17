@@ -15,10 +15,8 @@ const StateFile = "portfolio_state.json"
 // LoadState reads the portfolio state from disk.
 // It returns the PortfolioState struct and an error if one occurred.
 func LoadState() (models.PortfolioState, error) {
-	var s models.PortfolioState
-
-	// os.Stat checks if a file exists.
-	if _, err := os.Stat(StateFile); os.IsNotExist(err) {
+	s, err := loadStateRaw()
+	if os.IsNotExist(err) {
 		log.Println("State file missing, generating template...")
 		// Create a default initial state
 		s = models.PortfolioState{Version: "1.3", Positions: []models.Position{}}
@@ -26,25 +24,7 @@ func LoadState() (models.PortfolioState, error) {
 		SaveState(s)
 		return s, nil
 	}
-
-	// Open the file for reading.
-	f, err := os.Open(StateFile)
 	if err != nil {
-		return s, err
-	}
-	// defer ensures f.Close() is called when this function exits,
-	// regardless of whether it returns normally or errors out.
-	defer f.Close()
-
-	// Read all bytes from the file.
-	b, err := io.ReadAll(f)
-	if err != nil {
-		return s, err
-	}
-
-	// Unmarshal converts JSON bytes into our Go struct.
-	// We pass &s (pointer to s) so Unmarshal can modify s directly.
-	if err := json.Unmarshal(b, &s); err != nil {
 		return s, err
 	}
 
@@ -57,6 +37,36 @@ func LoadState() (models.PortfolioState, error) {
 	// Ensure slice is never nil (JSON [] instead of null)
 	if s.Positions == nil {
 		s.Positions = []models.Position{}
+	}
+
+	return s, nil
+}
+
+// loadStateRaw reads the file from disk without migration or side effects.
+func loadStateRaw() (models.PortfolioState, error) {
+	var s models.PortfolioState
+
+	// os.Stat checks if a file exists.
+	if _, err := os.Stat(StateFile); os.IsNotExist(err) {
+		return s, err
+	}
+
+	// Open the file for reading.
+	f, err := os.Open(StateFile)
+	if err != nil {
+		return s, err
+	}
+	defer f.Close()
+
+	// Read all bytes from the file.
+	b, err := io.ReadAll(f)
+	if err != nil {
+		return s, err
+	}
+
+	// Unmarshal converts JSON bytes into our Go struct.
+	if err := json.Unmarshal(b, &s); err != nil {
+		return s, err
 	}
 
 	return s, nil
@@ -102,8 +112,8 @@ func SaveState(s models.PortfolioState) {
 	// "Every time saveState() is called, the bot should verify that for all active positions, NewHWM >= OldHWM."
 
 	// 1. Load the current state from disk to compare against.
-	// We ignore errors here (e.g., file not found on first run) because we can't audit what doesn't exist.
-	oldState, err := LoadState()
+	// We use loadStateRaw to avoid infinite recursion (Load -> Migrate -> Save -> Load...).
+	oldState, err := loadStateRaw()
 	if err == nil {
 		oldPositions := make(map[string]models.Position)
 		for _, p := range oldState.Positions {
