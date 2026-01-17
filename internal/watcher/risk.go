@@ -254,15 +254,11 @@ func (w *Watcher) handleAIResult(analysis *ai.AIAnalysis, snapshot *ai.Portfolio
 	}
 
 	// Check against Budget
-	// AvailableBudget is updated by JIT Sync in buildPortfolioSnapshot
-	// BUT, we need to be sure. w.state is locked? No.
-	// buildPortfolioSnapshot called SyncWithBroker which updated w.state logic.
-	// We can trust w.state.AvailableBudget from the snapshot?
-	// The snapshot passed in has AvailableBudget.
+	// Spec 92: AvailableBudget replaced by volatile Buying Power (snapshot.Capital)
 
-	if totalBatchCost.GreaterThan(snapshot.AvailableBudget) {
-		msg := fmt.Sprintf("❌ Batch Rejection (Spec 80):\nTotal Cost ($%s) exceeds Available Budget ($%s).\nCommand: %s",
-			totalBatchCost.StringFixed(2), snapshot.AvailableBudget.StringFixed(2), analysis.ActionCommand)
+	if totalBatchCost.GreaterThan(snapshot.Capital) {
+		msg := fmt.Sprintf("❌ Batch Rejection (Spec 80):\nTotal Cost ($%s) exceeds Buying Power ($%s).\nCommand: %s",
+			totalBatchCost.StringFixed(2), snapshot.Capital.StringFixed(2), analysis.ActionCommand)
 
 		log.Printf("[AI_BUDGET_REJECTION] %s", msg)
 		if isManual {

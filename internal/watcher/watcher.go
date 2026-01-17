@@ -13,6 +13,8 @@ import (
 	"alpha_trading/internal/models"
 	"alpha_trading/internal/storage"
 	"alpha_trading/internal/telegram"
+
+	"github.com/shopspring/decimal"
 )
 
 var startTime = time.Now()
@@ -280,14 +282,23 @@ func (w *Watcher) buildPortfolioSnapshot(ticker string) (*ai.PortfolioSnapshot, 
 		marketContext = fmt.Sprintf("Analysis Focus: %s", ticker)
 	}
 
+	// Calculate Current Exposure Dynamically (Spec 92: Runtime-only)
+	// Exposure = Sum(Qty * EntryPrice)
+	currentExposure := decimal.Zero
+	// Use read lock for safe access to Positions (already held)
+	for _, p := range w.state.Positions {
+		if p.Status == "ACTIVE" {
+			cost := p.Quantity.Mul(p.EntryPrice)
+			currentExposure = currentExposure.Add(cost)
+		}
+	}
+
 	return &ai.PortfolioSnapshot{
 		Timestamp:       time.Now().Format(time.RFC3339),
 		MarketStatus:    status,
 		Capital:         bp,
 		Equity:          equity,
-		FiscalLimit:     w.state.FiscalLimit,
-		AvailableBudget: w.state.AvailableBudget,
-		CurrentExposure: w.state.CurrentExposure,
+		CurrentExposure: currentExposure,
 		Positions:       w.state.Positions,
 		MarketContext:   marketContext,
 		WatchlistPrices: w.state.WatchlistPrices, // Spec 74

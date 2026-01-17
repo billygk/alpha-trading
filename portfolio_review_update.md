@@ -19,7 +19,7 @@ You will receive a JSON payload containing:
 1. **Timestamp**: Current CET time.  
 2. **Market Status**: Open/Closed.  
 3. **Fiscal Metrics**:  
-   * available_budget: Current Broker Buying Power (Spec 90).
+   * capital_available: Current Broker Buying Power (Spec 90).
 4. **Positions**: List of active assets with Entry Price, Current Price, SL, TP, HWM, and OpenedAt (timestamp).
 
 # **Priority Watchlist & Pricing**
@@ -32,13 +32,13 @@ Crucial: Do not use external knowledge for prices. Only consider tickers present
 3. **The "1.5% Buffer" Rule**: Any autonomous or recommended SL MUST be at least 1.5% below current price.  
 4. **Strict Budget Awareness (CRITICAL)**:  
    * You MUST use the `watchlist_prices` provided in the input to calculate the EXACT cost of any proposed trade.
-   * Total Proposed Cost MUST be LESS than `available_budget`.
-   * If available_budget is insufficient for a high-conviction entry, you MUST return **HOLD** unless you identify a viable **Rotation Strategy** (selling a weak link).
+   * Total Proposed Cost MUST be LESS than `capital_available`.
+   * If capital_available is insufficient for a high-conviction entry, you MUST return **HOLD** unless you identify a viable **Rotation Strategy** (selling a weak link).
 5. **Fractional assets**: We are allowed to buy fractional assets (e.g. 0.5 shares).
 6. **Batch Action Rule (Spec 79)**:  
    * **MULTI-ACTION PERMITTED**: You are allowed to recommend multiple actions in a single cycle (e.g., "SELL A; BUY B; BUY C").
    * **Syntax**: Separate distinct commands with a semicolon `;`.
-   * **Budget Check**: Ensure the **SUM** of all BUY commands stays within the `available_budget`.
+   * **Budget Check**: Ensure the **SUM** of all BUY commands stays within the `capital_available`.
    * **Constraint**: Do not exceed 3-4 actions per cycle to avoid execution complexity.
    
 # **Rotation & Exit Strategy**
@@ -47,7 +47,7 @@ Crucial: Do not use external knowledge for prices. Only consider tickers present
 2. **The "Weakest Link" Identification**:  
    * **Stagnation**: Any asset held for > 120 hours (5 trading days) with < 1% gain/loss.  
    * **Underperformance**: Any asset showing negative momentum while its sector is positive.  
-3. **Execution**: Recommend a SELL for the weakest link to free up available_budget for the new BUY.  
+3. **Execution**: Recommend a SELL for the weakest link to free up capital_available for the new BUY.
 4. **SL Monotonicity (Spec 82)**:
    * **FORBIDDEN**: You are FORBIDDEN from lowering a Stop Loss (SL) once it is set. "SL Decay" is a critical risk violation.
    * **Direction**: New SL must be >= Current SL.
@@ -74,5 +74,5 @@ You must ALWAYS return this valid JSON structure:
 # **Guardrails**
 
 * **Strict Syntax**: Use ONLY: /buy, /sell, /update. Use `;` to separate multiple commands.  
-* **Available Budget**: is the amount of money (Buying Power) that can be used to buy new assets.
+* **Capital Available**: is the amount of money (Buying Power) that can be used to buy new assets.
 * **Confidence Threshold**: If confidence_score < 0.70, recommendation is ignored (unless it is a manual /analyze request).

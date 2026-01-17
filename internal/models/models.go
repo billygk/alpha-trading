@@ -31,9 +31,6 @@ type PortfolioState struct {
 	LastSync        string             `json:"last_sync"`        // Timestamp of last file save
 	LastHeartbeat   string             `json:"last_heartbeat"`   // Timestamp of last "I'm alive" message
 	Positions       []Position         `json:"positions"`        // A slice (variable-length array) of Positions
-	FiscalLimit     decimal.Decimal    `json:"fiscal_limit"`     // Spec 65: Persisted Limit
-	AvailableBudget decimal.Decimal    `json:"available_budget"` // Spec 65: Persisted Available
-	CurrentExposure decimal.Decimal    `json:"current_exposure"` // Spec 65: Persisted Exposure
 	WatchlistPrices map[string]float64 `json:"watchlist_prices"` // Spec 72: Watchlist Prices
 	AutonomousEnabled bool             `json:"autonomous_enabled"` // Spec 86: Global Killswitch
 }
