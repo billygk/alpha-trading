@@ -786,3 +786,11 @@ Implementation:
 Before executing a /buy that requires a preceding /sell (Rotation - Spec 67), the bot MUST explicitly check for and cancel any open orders (Bracket, Stop, Limit) associated with the ticker being sold.
 Wait for order cancellation confirmation before proceeding to the liquidation and subsequent purchase.
 
+## 92. Total Liquidation of Shadow Budget Logic
+Objective: Purge all remaining "Fiscal Limit" and "Hard-Stop" logic to ensure the broker is the sole source of truth for capital.
+Implementation:
+Decommission: Remove the fiscal_limit field from PortfolioState struct and the portfolio_state.json schema.
+Logic Refactor: All functions previously checking AvailableBudget (Spec 22, 26, 63, 65, 69) MUST be refactored to call alpaca.GetAccount() directly.
+The "Truth" Variable: AvailableBudget is now a volatile, runtime-only value derived from account.NonMarginableBuyingPower.
+AI Instruction: Update the AI system instruction to stop referencing a "$300 limit" and instead focus on the account_equity and buying_power provided in the dynamic JSON payload.
+
