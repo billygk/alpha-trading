@@ -28,7 +28,6 @@ type Config struct {
 	DefaultStopLossPct          float64  // Environment: DEFAULT_STOP_LOSS_PCT
 	DefaultTrailingStopPct      float64  // Environment: DEFAULT_TRAILING_STOP_PCT
 	AutoStatusEnabled           bool     // Environment: AUTO_STATUS_ENABLED
-	FiscalBudgetLimit           float64  // Environment: FISCAL_BUDGET_LIMIT
 	MaxStagnationHours          int      // Environment: MAX_STAGNATION_HOURS (Spec 66)
 	GeminiAPIKey                string   // Environment: GEMINI_API_KEY
 	WatchlistTickers            []string // Environment: WATCHLIST_TICKERS (Spec 72)
@@ -83,11 +82,6 @@ func Load() *Config {
 	}
 
 	// 3. Populate Config struct with Defaults + Env Overrides
-	// Load Fiscal Budget (Spec 63)
-	fiscalLimit, err := strconv.ParseFloat(os.Getenv("FISCAL_BUDGET_LIMIT"), 64)
-	if err != nil {
-		fiscalLimit = 300.0 // Hard default per spec
-	}
 
 	cfg := &Config{
 		LogLevel:                    getEnv("WATCHER_LOG_LEVEL", "INFO"),
@@ -100,8 +94,7 @@ func Load() *Config {
 		DefaultStopLossPct:          getEnvAsFloat64("DEFAULT_STOP_LOSS_PCT", 5.0),            // Default 5.0%
 		DefaultTrailingStopPct:      getEnvAsFloat64("DEFAULT_TRAILING_STOP_PCT", 3.0),        // Default 3.0%
 		AutoStatusEnabled:           getEnvAsBool("AUTO_STATUS_ENABLED", false),               // Default false
-		FiscalBudgetLimit:           fiscalLimit,
-		MaxStagnationHours:          getEnvAsInt("MAX_STAGNATION_HOURS", 120), // Default 120 (5 days)
+		MaxStagnationHours:          getEnvAsInt("MAX_STAGNATION_HOURS", 120),                 // Default 120 (5 days)
 		GeminiAPIKey:                os.Getenv("GEMINI_API_KEY"),
 		WatchlistTickers:            getEnvAsSlice("WATCHLIST_TICKERS", []string{}), // Default empty
 	}

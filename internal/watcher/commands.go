@@ -66,7 +66,6 @@ func (w *Watcher) handleConfigCommand() string {
 		"Log Level: %s\n"+
 		"Max Log Size: %d MB\n"+
 		"Max Backups: %d\n"+
-		"Fiscal Limit: $%0.2f\n"+
 		"Confirmation TTL: %d sec\n"+
 		"Autonomy: %v\n"+
 		"Gemini API: %s",
@@ -74,7 +73,6 @@ func (w *Watcher) handleConfigCommand() string {
 		w.config.LogLevel,
 		w.config.MaxLogSizeMB,
 		w.config.MaxLogBackups,
-		w.config.FiscalBudgetLimit,
 		w.config.ConfirmationTTLSec,
 		w.state.AutonomousEnabled,
 		maskSecret(w.config.GeminiAPIKey))

@@ -1,7 +1,7 @@
 {
-  "version": "1.3",
-  "last_sync": "2026-01-17T19:48:16+01:00",
-  "last_heartbeat": "2026-01-17T19:48:16+01:00",
+  "version": "1.4",
+  "last_sync": "2026-01-17T20:37:15+01:00",
+  "last_heartbeat": "2026-01-17T20:37:15+01:00",
   "positions": [
     {
       "ticker": "CCJ",
@@ -19,13 +19,13 @@
       "ticker": "PLTR",
       "quantity": "1",
       "entry_price": "172.49",
-      "stop_loss": "174.38",
-      "take_profit": "197.45",
+      "stop_loss": "163.8655",
+      "take_profit": "189.739",
       "status": "ACTIVE",
-      "thesis_id": "IMPORTED_1768502544",
-      "high_water_mark": "179.7872",
+      "thesis_id": "IMPORTED_1768679022",
+      "high_water_mark": "172.49",
       "trailing_stop_pct": "3",
-      "opened_at": "2026-01-15T19:42:24.9099898+01:00"
+      "opened_at": "2026-01-17T20:43:42.78104+01:00"
     }
   ],
   "watchlist_prices": {
@@ -50,5 +50,5 @@
     "UEC": 17.85,
     "VRT": 176.895
   },
-  "autonomous_enabled": false
+  "autonomous_enabled": true
 }

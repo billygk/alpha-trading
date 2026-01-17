@@ -187,6 +187,9 @@ func (p *Provider) UpdatePositionRisk(ticker string, sl, tp decimal.Decimal) err
 		TimeInForce: alpaca.Day,
 		LimitPrice:  &tp,
 		OrderClass:  alpaca.OCO,
+		TakeProfit: &alpaca.TakeProfit{
+			LimitPrice: &tp,
+		},
 		StopLoss: &alpaca.StopLoss{
 			StopPrice: &sl,
 		},

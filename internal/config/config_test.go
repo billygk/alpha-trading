@@ -54,7 +54,4 @@ func TestLoadConfig_Defaults(t *testing.T) {
 		t.Errorf("Expected DefaultTakeProfitPct 15.0, got %f", cfg.DefaultTakeProfitPct)
 	}
 
-	if cfg.FiscalBudgetLimit != 300.0 {
-		t.Errorf("Expected FiscalBudgetLimit 300.0, got %f", cfg.FiscalBudgetLimit)
-	}
 }

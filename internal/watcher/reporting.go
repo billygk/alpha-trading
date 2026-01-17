@@ -217,19 +217,14 @@ func (w *Watcher) getStatus() string {
 		}
 	}
 
-	var currentExposure decimal.Decimal
-	for _, p := range activePositions {
-		if d, ok := posDetails[p.Ticker]; ok && !d.Current.IsZero() {
-			cost := d.Qty.Mul(d.Entry) // Use Entry Price for Cost Basis (Spec 63)
-			currentExposure = currentExposure.Add(cost)
-		}
-	}
-	fiscalLimit := decimal.NewFromFloat(w.config.FiscalBudgetLimit)
-	availableBudget := fiscalLimit.Sub(currentExposure)
+	buyingPower, errBP := w.provider.GetBuyingPower()
 
 	sb.WriteString(fmt.Sprintf("Equity: %s\n", equityStr))
-	sb.WriteString(fmt.Sprintf("Budget: $%s / $%s (Available: $%s)\n",
-		currentExposure.StringFixed(2), fiscalLimit.StringFixed(2), availableBudget.StringFixed(2)))
+	if errBP == nil {
+		sb.WriteString(fmt.Sprintf("Buying Power: $%s\n", buyingPower.StringFixed(2)))
+	} else {
+		sb.WriteString("Buying Power: Err\n")
+	}
 	sb.WriteString(fmt.Sprintf("Uptime: %s%s", uptime, pendingMsg))
 
 	return sb.String()
