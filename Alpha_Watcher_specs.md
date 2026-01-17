@@ -830,3 +830,19 @@ Add AutonomyEnabled (bool) to portfolio_state.json.
 The /stop command sets this to false and saves state.
 The /start command sets this to true and saves state.
 Logic Guard: The autonomous loop (Spec 83) MUST check this flag before calling the AI or executing trade commands.
+
+## 97. Logic & Domain Unit Testing
+Objective: Verify core business logic without network dependency.
+Implementation:
+Math & Decimals: Implement unit tests for AvailableBudget calculations and SL/TP percentage math using the shopspring/decimal package.
+State Migration: Test the Migrate() function to ensure legacy JSON files are correctly upgraded to the current schema version.
+Config Validation: Test the LoadConfig function to verify that missing env variables correctly fall back to "Sensible Defaults."
+Command Parsing: Unit test the Telegram command parser to ensure complex inputs (e.g., /buy PLTR 2.5 170.50 200.00) are correctly mapped to internal structs.
+
+## 98. Broker-Native Integration Testing (Paper Trading)
+Objective: Ensure the MarketProvider correctly interacts with the broker's risk engine.
+Implementation:
+Environment: All integration tests MUST run against the Alpaca Paper Trading API using a dedicated TEST_APCA_API_KEY.
+Bracket Order Verification: Create a test that places a /buy order with SL/TP and verifies (via GetOrder) that the resulting bracket is correctly linked on the broker side.
+Rotation Simulation: Implement a test script that simulates a full "Spec 67 Rotation": cancel existing orders, sell asset A, verify fill, and buy asset B.
+Slippage Gate Test: Mock a high-spread market condition and verify that the Slippage Gate (Spec 85) correctly aborts the autonomous execution.
