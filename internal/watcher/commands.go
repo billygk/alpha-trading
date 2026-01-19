@@ -375,12 +375,16 @@ func (w *Watcher) handleUpdateCommand(parts []string) string {
 	}
 
 	ticker := strings.ToUpper(parts[1])
-	sl, err1 := decimal.NewFromString(parts[2])
-	tp, err2 := decimal.NewFromString(parts[3])
+	slRaw, err1 := decimal.NewFromString(parts[2])
+	tpRaw, err2 := decimal.NewFromString(parts[3])
 
 	if err1 != nil || err2 != nil {
 		return "⚠️ Invalid number format."
 	}
+
+	// Round to 2 decimals to satisfy broker requirements (Spec 99.3)
+	sl := slRaw.Round(2)
+	tp := tpRaw.Round(2)
 
 	// --- Spec 51: Intent Mutation Guardrails ---
 	// 1. Context: Get Market Price (Network Call outside lock)
@@ -431,7 +435,8 @@ func (w *Watcher) handleUpdateCommand(parts []string) string {
 	// --- Spec 93: Multi-Broker Risk Update ---
 	// Call Provider to update risk on exchange
 	if err := w.provider.UpdatePositionRisk(ticker, sl, tp); err != nil {
-		return fmt.Sprintf("❌ Broker Update Failed: %v", err)
+		// Sanitize error for Telegram (wrap in code block)
+		return fmt.Sprintf("❌ Broker Update Failed:\n`%v`", err)
 	}
 
 	// Update Local State for Dashboard Consistency
