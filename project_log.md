@@ -586,3 +586,8 @@ Action: Debugging AI Notification Silence
 Result: Modified `risk.go` to bypass "Quiet Mode" suppression for HOLD recommendations when `WATCHER_LOG_LEVEL=DEBUG`. Users debugging the bot can now see high-confidence HOLD decisions in Telegram.
 Next Steps: Monitor behavior.
 ---
+Date: 2026-01-20
+Action: Fixed AI Command Usage (Spec 51 Maintenance)
+Result: Updated AI System Instruction (`portfolio_review_update.md`) to explicitly forbid ambiguous `/update` syntax. AI was previously attempting 2-argument updates, which failed validation. Added strict examples and requirements for 3-argument syntax (`/update <ticker> <sl> <tp>`).
+Next Steps: Monitor AI execution logs.
+---

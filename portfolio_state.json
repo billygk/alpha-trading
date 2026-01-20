@@ -1,7 +1,7 @@
 {
   "version": "1.4",
-  "last_sync": "2026-01-20T19:29:03+01:00",
-  "last_heartbeat": "2026-01-20T19:29:02+01:00",
+  "last_sync": "2026-01-20T20:28:25+01:00",
+  "last_heartbeat": "2026-01-20T20:28:23+01:00",
   "last_eod_date": "2026-01-19",
   "positions": [
     {
@@ -27,41 +27,29 @@
       "high_water_mark": "110.52",
       "trailing_stop_pct": "2",
       "opened_at": "2026-01-20T19:02:54.2192546+01:00"
-    },
-    {
-      "ticker": "UEC",
-      "quantity": "3",
-      "entry_price": "17.92",
-      "stop_loss": "17.96",
-      "take_profit": "19.71",
-      "status": "ACTIVE",
-      "thesis_id": "IMPORTED_1768932174",
-      "high_water_mark": "18.245",
-      "trailing_stop_pct": "2",
-      "opened_at": "2026-01-20T19:02:54.2192546+01:00"
     }
   ],
   "watchlist_prices": {
-    "ASPI": 7.47,
-    "BEAM": 31.495,
-    "BTC": 39.62,
-    "CCJ": 116.97,
-    "DNTH": 45.8,
-    "ETN": 339.9,
-    "FCX": 59.68,
-    "GILD": 125.8,
-    "ISRG": 527.165,
-    "LLY": 1037.3,
-    "MP": 68.98,
-    "NVT": 110.23,
-    "PLTR": 169.675,
+    "ASPI": 7.375,
+    "BEAM": 31.29,
+    "BTC": 39.575,
+    "CCJ": 116.12,
+    "DNTH": 45.88,
+    "ETN": 337.77,
+    "FCX": 59.45,
+    "GILD": 125.07,
+    "ISRG": 526.86,
+    "LLY": 1039.51,
+    "MP": 68.4,
+    "NVT": 110.03,
+    "PLTR": 168.8,
     "RHM": 0,
     "RNWEF": 0,
-    "RTX": 198.53,
-    "SCCO": 185.09,
-    "SMH": 392.12,
-    "UEC": 18.115,
-    "VRT": 174.385
+    "RTX": 197.34,
+    "SCCO": 184.12,
+    "SMH": 390.25,
+    "UEC": 18.01,
+    "VRT": 174
   },
   "autonomous_enabled": true
 }

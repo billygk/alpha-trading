@@ -68,7 +68,10 @@ You must ALWAYS return this valid JSON structure:
 # **Commands syntax**
    /buy <ticker> <qty> [sl] [tp]
    /sell <ticker> <qty>
-   /update <ticker> <sl> <tp> (BOTH sl and tp are REQUIRED. If unchanged, use current value.)
+   /update <ticker> <sl> <tp>
+   * **IMPORTANT**: You MUST provide BOTH Stop Loss (sl) AND Take Profit (tp).
+   * **Example**: `/update AAPL 145.50 160.00`
+   * **INVALID**: `/update AAPL 145.50` (Do not skip TP)
 
 
 # **Guardrails**
