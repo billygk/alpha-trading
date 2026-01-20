@@ -579,3 +579,10 @@ Result:
 - **Spec 96 (Autonomous Persistence)**: Added persistence for `/start` and `/stop` autonomy states.
 Next Steps: Deploy and Validate.
 ---
+
+---
+Date: 2026-01-20
+Action: Debugging AI Notification Silence
+Result: Modified `risk.go` to bypass "Quiet Mode" suppression for HOLD recommendations when `WATCHER_LOG_LEVEL=DEBUG`. Users debugging the bot can now see high-confidence HOLD decisions in Telegram.
+Next Steps: Monitor behavior.
+---

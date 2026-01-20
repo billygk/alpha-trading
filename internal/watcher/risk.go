@@ -280,8 +280,8 @@ func (w *Watcher) handleAIResult(analysis *ai.AIAnalysis, snapshot *ai.Portfolio
 
 	if analysis.Recommendation == "HOLD" {
 		// Spec 99.6: Quiet Mode Logic
-		// If HOLD and Confidence > 0.90, suppress unless manual.
-		if analysis.ConfidenceScore > 0.90 && !isManual {
+		// If HOLD and Confidence > 0.90, suppress unless manual or DEBUG mode.
+		if analysis.ConfidenceScore > 0.90 && !isManual && w.config.LogLevel != "DEBUG" {
 			log.Printf("AI STRATEGY: HOLD %s (Quiet Mode > 0.90). Critique: %s", ticker, analysis.Analysis)
 			return
 		}

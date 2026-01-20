@@ -259,7 +259,26 @@ func (w *Watcher) runAIAnalysis(ticker string, isManual bool) {
 	}
 
 	// Spec 99.2: AI Interaction Heartbeat
-	telegram.Notify("🤖 CONSULTING AI: Sending context to Gemini 2.5 Flash...")
+	msg := "🤖 CONSULTING AI (Gemini 2.5 Flash)...\n"
+	msg += fmt.Sprintf("💰 Buying Power: $%s | Equity: $%s\n", snapshot.Capital.StringFixed(2), snapshot.Equity.StringFixed(2))
+	msg += fmt.Sprintf("📉 Exposure: $%s\n", snapshot.CurrentExposure.StringFixed(2))
+
+	if positions, ok := snapshot.Positions.([]models.Position); ok && len(positions) > 0 {
+		msg += "\n📂 **Active Positions:**\n"
+		for _, p := range positions {
+			msg += fmt.Sprintf("• %s: %s @ $%s (SL: $%s)\n", p.Ticker, p.Quantity, p.EntryPrice.StringFixed(2), p.StopLoss.StringFixed(2))
+		}
+	} else {
+		msg += "\n📂 **Active Positions:** None\n"
+	}
+
+	if len(snapshot.WatchlistPrices) > 0 {
+		msg += "\n👀 **Watchlist Pillars:**\n"
+		for t, price := range snapshot.WatchlistPrices {
+			msg += fmt.Sprintf("• %s: $%.2f\n", t, price)
+		}
+	}
+	telegram.Notify(msg)
 
 	analysis, err := aiClient.AnalyzePortfolio(string(sysInstr)+contextMsg, *snapshot)
 	if err != nil {

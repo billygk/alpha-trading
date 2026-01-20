@@ -148,6 +148,7 @@ func (p *Provider) PlaceOrder(ticker string, qty decimal.Decimal, side string, s
 
 func (p *Provider) UpdatePositionRisk(ticker string, sl, tp decimal.Decimal) error {
 	// 1. Cancel Open Orders
+	// 1. Cancel Open Orders
 	orders, err := p.ListOrders("open")
 	if err != nil {
 		return fmt.Errorf("failed to list open orders for %s: %w", ticker, err)
@@ -158,6 +159,34 @@ func (p *Provider) UpdatePositionRisk(ticker string, sl, tp decimal.Decimal) err
 				return fmt.Errorf("failed to cancel order %s for %s: %w", o.ID, ticker, err)
 			}
 		}
+	}
+
+	// 1.5 Wait for Clearance (Avoid Race Condition)
+	cleared := false
+	for i := 0; i < 10; i++ {
+		checkOrders, err := p.ListOrders("open")
+		if err != nil {
+			time.Sleep(200 * time.Millisecond)
+			continue
+		}
+
+		found := false
+		for _, o := range checkOrders {
+			if o.Symbol == ticker {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			cleared = true
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	if !cleared {
+		return fmt.Errorf("timeout waiting for previous orders to clear for %s", ticker)
 	}
 
 	// 2. Get Position Qty
