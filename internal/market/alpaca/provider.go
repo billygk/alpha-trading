@@ -2,6 +2,7 @@ package alpaca
 
 import (
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -126,15 +127,24 @@ func (p *Provider) PlaceOrder(ticker string, qty decimal.Decimal, side string, s
 	}
 
 	if side == "buy" && (!slPrice.IsZero() || !tpPrice.IsZero()) {
-		req.OrderClass = alpaca.Bracket
-		if !tpPrice.IsZero() {
-			req.TakeProfit = &alpaca.TakeProfit{
-				LimitPrice: &tpPrice,
+		// Check for fractional quantity (or Crypto which is often fractional)
+		// Alpaca rejects Bracket orders for fractional quantities: "fractional orders must be simple orders"
+		isFractional := !qty.Mod(decimal.NewFromInt(1)).IsZero()
+
+		if isFractional {
+			log.Printf("⚠️ Fractional Buy detected (%s %s). Stripping SL/TP brackets as they are not supported for fractional/crypto orders.", qty, ticker)
+			// Proceed as Simple Market Order (no OrderClass, no SL/TP)
+		} else {
+			req.OrderClass = alpaca.Bracket
+			if !tpPrice.IsZero() {
+				req.TakeProfit = &alpaca.TakeProfit{
+					LimitPrice: &tpPrice,
+				}
 			}
-		}
-		if !slPrice.IsZero() {
-			req.StopLoss = &alpaca.StopLoss{
-				StopPrice: &slPrice,
+			if !slPrice.IsZero() {
+				req.StopLoss = &alpaca.StopLoss{
+					StopPrice: &slPrice,
+				}
 			}
 		}
 	}
@@ -205,6 +215,11 @@ func (p *Provider) UpdatePositionRisk(ticker string, sl, tp decimal.Decimal) err
 		// Alpaca API usually handles negative qty in position, but order qty is unsigned (magnitude).
 		// We should take absolute value of qty.
 		qty = qty.Abs()
+	}
+
+	// Check for fractional quantity
+	if !qty.Mod(decimal.NewFromInt(1)).IsZero() {
+		return fmt.Errorf("fractional positions (%s %s) do not support OCO/Limit updates in Alpaca", qty, ticker)
 	}
 
 	// Alpaca OCO: Primary is Limit (TP), Secondary is Stop (SL)
