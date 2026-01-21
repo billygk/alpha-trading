@@ -310,7 +310,10 @@ func (w *Watcher) handleAIResult(analysis *ai.AIAnalysis, snapshot *ai.Portfolio
 	w.mu.RUnlock()
 
 	// If Autonomous Enabled AND High Confidence -> Execute Immediately
-	if autonomous && analysis.ConfidenceScore >= 0.70 && (analysis.Recommendation == "BUY" || analysis.Recommendation == "SELL" || analysis.Recommendation == "UPDATE") {
+	// Fix: Support composite recommendations (e.g. "UPDATE; BUY") by checking !HOLD instead of exact string match
+	isActionable := analysis.Recommendation != "HOLD" && analysis.Recommendation != "WAIT"
+
+	if autonomous && analysis.ConfidenceScore >= 0.70 && isActionable {
 		telegram.Notify(fmt.Sprintf("🤖 AI EXECUTION START: %s | %s", ticker, analysis.Recommendation))
 
 		// Spec 84: Autonomous Execution Pipeline
@@ -384,6 +387,15 @@ func (w *Watcher) handleAIResult(analysis *ai.AIAnalysis, snapshot *ai.Portfolio
 					tp = price.Mul(multiplier)
 				}
 
+				// Fix: Fractional Check for Autonomous Buys
+				isFractional := !qty.Mod(decimal.NewFromInt(1)).IsZero()
+				if isFractional {
+					// Force SL/TP to zero for fractional orders
+					sl = decimal.Zero
+					tp = decimal.Zero
+					resultsBuilder.WriteString(fmt.Sprintf("ℹ️ Fractional Buy (%s): SL/TP Disabled.\n", bTicker))
+				}
+
 				// Execute
 				order, err := w.provider.PlaceOrder(bTicker, qty, "buy", sl, tp)
 				if err != nil {
@@ -416,8 +428,7 @@ func (w *Watcher) handleAIResult(analysis *ai.AIAnalysis, snapshot *ai.Portfolio
 
 	// Fallback to Manual (Existing Logic)
 	// Route based on Recommendation
-	switch analysis.Recommendation {
-	case "BUY", "SELL":
+	if isActionable {
 		actionID := fmt.Sprintf("AI_%d_%s", time.Now().UnixNano(), ticker)
 
 		w.mu.Lock()
@@ -433,24 +444,8 @@ func (w *Watcher) handleAIResult(analysis *ai.AIAnalysis, snapshot *ai.Portfolio
 			{Text: "❌ DISMISS", CallbackData: fmt.Sprintf("AI_DISMISS_%s", actionID)},
 		}
 		telegram.SendInteractiveMessage(msg, buttons)
-
-	case "UPDATE":
-		// ... (Keep existing update logic logic if needed, or simplified manual fallback)
-		// For brevity, using same logic as Buy/Sell for manual confirmation
-		actionID := fmt.Sprintf("AI_%d_%s", time.Now().UnixNano(), ticker)
-
-		w.mu.Lock()
-		w.pendingActions[actionID] = PendingAction{
-			Ticker:    ticker,
-			Action:    analysis.ActionCommand,
-			Timestamp: time.Now(),
-		}
-		w.mu.Unlock()
-
-		buttons := []telegram.Button{
-			{Text: "✅ EXECUTE AI", CallbackData: fmt.Sprintf("AI_EXEC_%s", actionID)},
-			{Text: "❌ DISMISS", CallbackData: fmt.Sprintf("AI_DISMISS_%s", actionID)},
-		}
-		telegram.SendInteractiveMessage(msg, buttons)
+	} else {
+		// Log unrecognized recommendation if not HOLD/WAIT
+		log.Printf("AI Recommendation '%s' is not mapped to an action handler.", analysis.Recommendation)
 	}
 }

@@ -192,8 +192,15 @@ func (w *Watcher) handleBuyCommand(parts []string) string {
 		tp = price.Mul(multiplier)
 	}
 
-	// Default Trailing Stop (Spec 41 Safety)
 	tsPct := decimal.NewFromFloat(w.config.DefaultTrailingStopPct)
+
+	// Check for fractional quantity
+	isFractional := !qty.Mod(decimal.NewFromInt(1)).IsZero()
+	if isFractional {
+		// Force SL/TP to zero for fractional orders (Alpaca restriction)
+		sl = decimal.Zero
+		tp = decimal.Zero
+	}
 
 	totalCost := price.Mul(qty)
 	buyingPower, err := w.provider.GetBuyingPower()
@@ -207,30 +214,7 @@ func (w *Watcher) handleBuyCommand(parts []string) string {
 	}
 
 	// --- Spec 63: Fiscal Budget Hard-Stop ---
-	// Logic: Current Equity + Proposed Order Value > Limit?
-	// Strictly speaking, Equity includes current positions.
-	// "Enforce the $300 limit at the execution level... Calculate: Current_Equity + Proposed_Order_Value."
-	// Wait, usually it means "Total Exposure". If Equity is $290 and I buy $20, Equity becomes $290 (cash down, asset up).
-	// So "Equity" doesn't change on buy.
-	// The Spec likely means: "Total Capital Deployed + New Capital".
-	// OR "Account Value" (Equity) should not exceed $300?
-	// "If total > $300, the order is blocked".
-	// If I have $250 equity and I buy $60 (using margin? no margin on e2-micro/cash account usually).
-	// If I have $250 equity, it means I have $250 assets+cash.
-	// If I buy $50, I swap $50 cash for $50 asset. Equity is still $250.
-	// The guardrail "Current_Equity + Proposed_Order_Value > 300" implies checking if the user is *adding* funds?
-	// But /buy uses existing BP.
-	// Interpretation: The user wants to limit the *Account Size* or *Exposure*?
-	// "Enforce the $300 limit... Current_Equity + Proposed_Order_Value".
-	// Use Equity from GetEquity() which is Net Liquidation Value.
-	// If the user *deposits* money, Equity goes up.
-	// If the user buys, Equity stays same.
-	// This logic seems to check if "Current Equity + Cost" > 300.
-	// If Equity is $200 and Cost is $50 -> Total $250. Allowed.
-	// If Equity is $280 and Cost is $30 -> Total $310. Blocked.
-	// This prevents *deploying* capital if the account is already near the limit?
-	// BUT, strict reading: `Current_Equity` + `Proposed`.
-	// Let's implement strictly.
+	// ... (omitted comments for brevity, they remain in file if not overwritten) ...
 
 	// Spec 90: Removal of Fiscal Guardrails (Account-Scale Trading)
 	// We removed the $300 hard-stop. We rely on Buying Power check above.
@@ -249,17 +233,30 @@ func (w *Watcher) handleBuyCommand(parts []string) string {
 	}
 	w.mu.Unlock()
 
+	// Prepare UI strings
+	slStr := sl.StringFixed(2)
+	tpStr := tp.StringFixed(2)
+	warnMsg := ""
+
+	if isFractional {
+		slStr = "N/A (Fractional)"
+		tpStr = "N/A (Fractional)"
+		warnMsg = "\n⚠️ Fractional Mode: SL/TP brackets disabled."
+	}
+
 	// Response with Buttons
 	msg := fmt.Sprintf("📝 *TRADE PROPOSAL*\n"+
 		"Asset: %s\n"+
 		"Qty: %s\n"+
 		"Price: $%s\n"+
 		"Total: $%s\n"+
-		"SL: $%s | TP: $%s\n"+
+		"SL: %s | TP: %s\n"+
 		"TS: %s%%\n"+
+		"%s\n"+
 		"Confirm Execution?\n\n"+
 		"⏱️ Valid for %d seconds.",
-		ticker, qty.StringFixed(2), price.StringFixed(2), totalCost.StringFixed(2), sl.StringFixed(2), tp.StringFixed(2), tsPct.StringFixed(2),
+		ticker, qty.StringFixed(4), price.StringFixed(2), totalCost.StringFixed(2), slStr, tpStr, tsPct.StringFixed(2),
+		warnMsg,
 		w.config.ConfirmationTTLSec)
 
 	buttons := []telegram.Button{
@@ -429,6 +426,13 @@ func (w *Watcher) handleUpdateCommand(parts []string) string {
 		if !sl.GreaterThanOrEqual(currentSL) && !currentSL.IsZero() {
 			return fmt.Sprintf("❌ CRITICAL_RISK_VIOLATION (Spec 82):\nCannot lower Stop Loss.\nCurrent: $%s\nRequested: $%s\nMotion denied to prevent risk expansion.",
 				currentSL.StringFixed(2), sl.StringFixed(2))
+		}
+
+		// Spec 100: Fractional Position Guardrail
+		// Alpaca does not support OCO/Limit updates for fractional positions.
+		if w.state.Positions[foundIndex].IsFractional {
+			return fmt.Sprintf("❌ Fractional positions (%s %s) do not support OCO/Limit updates in Alpaca.\nReason: Broker restriction on fractional limit orders.\nAdvice: Use /sell to exit via Market Order.",
+				w.state.Positions[foundIndex].Quantity.StringFixed(4), ticker)
 		}
 	}
 

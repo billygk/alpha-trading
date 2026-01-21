@@ -22,6 +22,7 @@ type Position struct {
 	HighWaterMark   decimal.Decimal `json:"high_water_mark"`   // Highest price reached since entry
 	TrailingStopPct decimal.Decimal `json:"trailing_stop_pct"` // Trailing Stop percentage (e.g., 5.0 for 5%)
 	OpenedAt        time.Time       `json:"opened_at"`         // Spec 66: Timestamp when position was opened
+	IsFractional    bool            `json:"is_fractional"`     // Spec 100: Fractional Logic
 }
 
 // PortfolioState tracks the state of the portfolio and system.

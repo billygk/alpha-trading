@@ -156,6 +156,7 @@ func (w *Watcher) SyncWithBroker() (models.PortfolioState, error) {
 			TrailingStopPct: tsPct,
 			ThesisID:        thesisID,
 			OpenedAt:        openedAt,
+			IsFractional:    !qty.Mod(decimal.NewFromInt(1)).IsZero(),
 		}
 
 		newPositions = append(newPositions, newPos)
