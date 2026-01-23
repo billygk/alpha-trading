@@ -13,11 +13,11 @@ import (
 
 // MockProvider implements MarketProvider for testing
 type MockProvider struct {
-	prices       map[string]decimal.Decimal
-	buyingPower  decimal.Decimal
-	orders       []models.Order
-	positions    []models.BrokerPosition
-	quotes       map[string]models.Quote
+	prices      map[string]decimal.Decimal
+	buyingPower decimal.Decimal
+	orders      []models.Order
+	positions   []models.BrokerPosition
+	quotes      map[string]models.Quote
 }
 
 func (m *MockProvider) GetPrice(ticker string) (decimal.Decimal, error) {
@@ -35,7 +35,7 @@ func (m *MockProvider) ListOrders(status string) ([]models.Order, error) {
 	return m.orders, nil
 }
 
-func (m *MockProvider) PlaceOrder(ticker string, qty decimal.Decimal, side string, sl, tp decimal.Decimal) (*models.Order, error) {
+func (m *MockProvider) PlaceOrder(ticker string, qty decimal.Decimal, side string) (*models.Order, error) {
 	return &models.Order{ID: "mock_order_id"}, nil
 }
 
@@ -48,15 +48,16 @@ func (m *MockProvider) GetQuote(ticker string) (*models.Quote, error) {
 
 // Stubs for other interface methods not used in /buy parsing test (or return empty)
 func (m *MockProvider) GetEquity() (decimal.Decimal, error) { return decimal.Zero, nil }
-func (m *MockProvider) GetClock() (*models.Clock, error)   { return &models.Clock{IsOpen: true}, nil }
+func (m *MockProvider) GetClock() (*models.Clock, error)    { return &models.Clock{IsOpen: true}, nil }
 func (m *MockProvider) SearchAssets(query string) ([]models.Asset, error) {
 	return nil, nil
 }
-func (m *MockProvider) UpdatePositionRisk(ticker string, sl, tp decimal.Decimal) error { return nil }
-func (m *MockProvider) GetOrder(orderID string) (*models.Order, error)                { return nil, nil }
-func (m *MockProvider) CancelOrder(orderID string) error                              { return nil }
-func (m *MockProvider) ListPositions() ([]models.BrokerPosition, error)               { return m.positions, nil }
-func (m *MockProvider) GetBars(ticker string, limit int) ([]models.Bar, error)        { return nil, nil }
+
+// UpdatePositionRisk removed
+func (m *MockProvider) GetOrder(orderID string) (*models.Order, error)         { return nil, nil }
+func (m *MockProvider) CancelOrder(orderID string) error                       { return nil }
+func (m *MockProvider) ListPositions() ([]models.BrokerPosition, error)        { return m.positions, nil }
+func (m *MockProvider) GetBars(ticker string, limit int) ([]models.Bar, error) { return nil, nil }
 func (m *MockProvider) GetPortfolioHistory(period, timeframe string) (*models.PortfolioHistory, error) {
 	return nil, nil
 }

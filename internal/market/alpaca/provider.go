@@ -2,7 +2,6 @@ package alpaca
 
 import (
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
@@ -117,36 +116,14 @@ func (p *Provider) SearchAssets(query string) ([]models.Asset, error) {
 
 // --- Execution ---
 
-func (p *Provider) PlaceOrder(ticker string, qty decimal.Decimal, side string, slPrice decimal.Decimal, tpPrice decimal.Decimal) (*models.Order, error) {
+func (p *Provider) PlaceOrder(ticker string, qty decimal.Decimal, side string) (*models.Order, error) {
+	// Spec 102: Stateless Pricing & Spec 100: Decommission Broker Brackets
 	req := alpaca.PlaceOrderRequest{
 		Symbol:      ticker,
 		Qty:         &qty,
 		Side:        alpaca.Side(side),
-		Type:        alpaca.Market, // We only support Market for now in this wrapper
-		TimeInForce: alpaca.Day,
-	}
-
-	if side == "buy" && (!slPrice.IsZero() || !tpPrice.IsZero()) {
-		// Check for fractional quantity (or Crypto which is often fractional)
-		// Alpaca rejects Bracket orders for fractional quantities: "fractional orders must be simple orders"
-		isFractional := !qty.Mod(decimal.NewFromInt(1)).IsZero()
-
-		if isFractional {
-			log.Printf("⚠️ Fractional Buy detected (%s %s). Stripping SL/TP brackets as they are not supported for fractional/crypto orders.", qty, ticker)
-			// Proceed as Simple Market Order (no OrderClass, no SL/TP)
-		} else {
-			req.OrderClass = alpaca.Bracket
-			if !tpPrice.IsZero() {
-				req.TakeProfit = &alpaca.TakeProfit{
-					LimitPrice: &tpPrice,
-				}
-			}
-			if !slPrice.IsZero() {
-				req.StopLoss = &alpaca.StopLoss{
-					StopPrice: &slPrice,
-				}
-			}
-		}
+		Type:        alpaca.Market,
+		TimeInForce: alpaca.Day, // Spec 55
 	}
 
 	o, err := p.tradeClient.PlaceOrder(req)
@@ -156,96 +133,7 @@ func (p *Provider) PlaceOrder(ticker string, qty decimal.Decimal, side string, s
 	return mapOrder(o), nil
 }
 
-func (p *Provider) UpdatePositionRisk(ticker string, sl, tp decimal.Decimal) error {
-	// 1. Cancel Open Orders
-	// 1. Cancel Open Orders
-	orders, err := p.ListOrders("open")
-	if err != nil {
-		return fmt.Errorf("failed to list open orders for %s: %w", ticker, err)
-	}
-	for _, o := range orders {
-		if o.Symbol == ticker {
-			if err := p.CancelOrder(o.ID); err != nil {
-				return fmt.Errorf("failed to cancel order %s for %s: %w", o.ID, ticker, err)
-			}
-		}
-	}
-
-	// 1.5 Wait for Clearance (Avoid Race Condition)
-	cleared := false
-	for i := 0; i < 10; i++ {
-		checkOrders, err := p.ListOrders("open")
-		if err != nil {
-			time.Sleep(200 * time.Millisecond)
-			continue
-		}
-
-		found := false
-		for _, o := range checkOrders {
-			if o.Symbol == ticker {
-				found = true
-				break
-			}
-		}
-
-		if !found {
-			cleared = true
-			break
-		}
-		time.Sleep(200 * time.Millisecond)
-	}
-
-	if !cleared {
-		return fmt.Errorf("timeout waiting for previous orders to clear for %s", ticker)
-	}
-
-	// 2. Get Position Qty
-	pos, err := p.tradeClient.GetPosition(ticker)
-	if err != nil {
-		return fmt.Errorf("failed to get position for %s: %w", ticker, err)
-	}
-	qty := pos.Qty
-
-	// 3. Place OCO Order (Limit for TP, Stop for SL)
-	// Determine side (Close Position)
-	side := alpaca.Sell
-	if qty.IsNegative() {
-		side = alpaca.Buy
-		// For short positions, qty is negative, but PlaceOrder expects positive qty for the order size?
-		// Alpaca API usually handles negative qty in position, but order qty is unsigned (magnitude).
-		// We should take absolute value of qty.
-		qty = qty.Abs()
-	}
-
-	// Check for fractional quantity
-	if !qty.Mod(decimal.NewFromInt(1)).IsZero() {
-		return fmt.Errorf("fractional positions (%s %s) do not support OCO/Limit updates in Alpaca", qty, ticker)
-	}
-
-	// Alpaca OCO: Primary is Limit (TP), Secondary is Stop (SL)
-	req := alpaca.PlaceOrderRequest{
-		Symbol:      ticker,
-		Qty:         &qty,
-		Side:        side,
-		Type:        alpaca.Limit,
-		TimeInForce: alpaca.Day,
-		LimitPrice:  &tp,
-		OrderClass:  alpaca.OCO,
-		TakeProfit: &alpaca.TakeProfit{
-			LimitPrice: &tp,
-		},
-		StopLoss: &alpaca.StopLoss{
-			StopPrice: &sl,
-		},
-	}
-
-	_, err = p.tradeClient.PlaceOrder(req)
-	if err != nil {
-		return fmt.Errorf("failed to place OCO order for %s: %w", ticker, err)
-	}
-
-	return nil
-}
+// UpdatePositionRisk REMOVED per Spec 102
 
 func (p *Provider) GetOrder(orderID string) (*models.Order, error) {
 	o, err := p.tradeClient.GetOrder(orderID)

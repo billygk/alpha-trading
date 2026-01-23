@@ -52,7 +52,7 @@ It is designed for traders who want the precision of algorithmic execution (trai
 1.  **Fully Autonomous Execution (Buy/Sell/Update)**:
     -   If Confidence >= 0.70 AND Autonomy Enabled: AI executes immediately.
     -   Includes strict Slippage Checks (Ask/Bid spread < 0.5%).
-    -   Uses Native Bracket Orders (SL/TP) on the broker side.
+    -   Uses Virtual Risk Triggers (App-Side SL/TP) to execute Market Sells (Spec 100).
 2.  **Semi-Autonomous Fallback**: If Confidence < 0.70 or Autonomy Disabled, AI falls back to proposing trades via Telegram buttons.
 3.  **Killswitch**: Use `/stop` to force manual mode instantly.
 

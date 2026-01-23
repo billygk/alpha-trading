@@ -120,8 +120,108 @@ func (w *Watcher) checkRisk() {
 
 	// Spec 32: Automated Operational Awareness
 
+	// Spec 101: Virtual-to-Market Execution (The "Trigger" Bridge)
+	// Iterate positions and check if CurrentPrice violates SL or TP.
+	// We use the alpacaPositions (from Broker-as-Truth list) but we need to match with local state to get SL/TP.
+	// Actually, we should iterate LOCAL state (which has SL/TP) and find the price in alpacaPositions.
+
+	for _, lp := range w.state.Positions {
+		if lp.Status != "ACTIVE" {
+			continue
+		}
+
+		// Find current price from JIT list
+		var currentPrice decimal.Decimal
+		found := false
+		for _, ap := range alpacaPositions {
+			if ap.Symbol == lp.Ticker {
+				currentPrice = ap.CurrentPrice
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			// If not found in Alpaca but ACTIVE in local, it might be a sync issue.
+			// Sync logic elsewhere handles this?
+			// For now, we skip.
+			continue
+		}
+
+		triggered := false
+		triggerType := ""
+
+		// Stop Loss Trigger
+		if !lp.StopLoss.IsZero() && currentPrice.LessThanOrEqual(lp.StopLoss) {
+			triggered = true
+			triggerType = "STOP LOSS"
+		} else if !lp.TakeProfit.IsZero() && currentPrice.GreaterThanOrEqual(lp.TakeProfit) {
+			// Take Profit Trigger
+			triggered = true
+			triggerType = "TAKE PROFIT"
+		}
+
+		if triggered {
+			// Spec 101: Immediate Autonomous Sell
+			log.Printf("🎯 VIRTUAL TRIGGER: %s reached %s at $%s. Executing Market Exit.", lp.Ticker, triggerType, currentPrice.StringFixed(2))
+			telegram.Notify(fmt.Sprintf("🎯 VIRTUAL TRIGGER: %s reached %s at $%s. Executing Market Exit.", lp.Ticker, triggerType, currentPrice.StringFixed(2)))
+
+			// Execute Sell (Async or Sync? Spec says "Immediate". We are in lock?)
+			// checkRisk HAS LOCK. `ensureSequentialClearance` and `PlaceOrder` make network calls.
+			// Holding lock during network calls is bad.
+			// But checkRisk is `w.checkRisk()`. The lock is acquired at top of `checkRisk`.
+			// We should release lock before executing?
+			// But we are inside the loop iterating `w.state.Positions`.
+			// We can capture the action and execute after loop?
+
+			// Or we spawn a goroutine?
+			// "The bot MUST immediately initiate an autonomous /sell <ticker> sequence."
+			// Let's spawn a goroutine to handle the sell safely to avoid blocking the loop or holding the lock too long.
+			go func(ticker string, qty decimal.Decimal, price decimal.Decimal, tType string) {
+				// We need to ensure sequential clearance.
+				// Spec 54, 101.
+				if err := w.ensureSequentialClearance(ticker); err != nil {
+					log.Printf("Virtual Trigger Error: Clearance failed for %s: %v", ticker, err)
+					return // Retry next poll?
+					// If we fail here, we will retry next poll because price will still be triggering.
+				}
+
+				order, err := w.provider.PlaceOrder(ticker, qty, "sell")
+				if err != nil {
+					log.Printf("Virtual Trigger Error: PlaceOrder failed for %s: %v", ticker, err)
+					telegram.Notify(fmt.Sprintf("❌ VIRTUAL EXIT FAILED: %s | %v", ticker, err))
+					return
+				}
+
+				// Verify
+				_, vErr := w.verifyOrderExecution(order.ID)
+				if vErr != nil {
+					log.Printf("Virtual Trigger Error: Verification failed for %s: %v", ticker, vErr)
+					return
+				}
+
+				// Update State?
+				// Verification loop handles "Filled" status logging.
+				// Sync/Refresh will handle final state update?
+				// Spec 57 says we should archive and delete.
+				// handleSellCommand does it.
+				// We are replicating logic here.
+				// Ideally we call a shared `executeSell` method.
+				// For now, we leave state cleanup to the next periodic Sync or Refresh to keep this simple
+				// OR we reuse the logic.
+				// Since we are "Autonomous", we should mark it executed.
+				// But simpler: Wait for next poll. Sync (Point 42) removes closed positions.
+				// "Step 3: Remove any tickers from portfolio_state.json that are no longer present in alpaca.ListPositions() (Cleanup)."
+				// So if we sell successfully, Alpaca won't list it anymore, and next Sync removes it.
+				// Perfect.
+				telegram.Notify(fmt.Sprintf("✅ VIRTUAL EXIT EXECUTED: %s @ ~$%s", ticker, price.StringFixed(2)))
+
+			}(lp.Ticker, lp.Quantity, currentPrice, triggerType)
+		}
+	}
+
 	w.state.LastSync = time.Now().In(config.CetLoc).Format(time.RFC3339)
-	w.mu.Unlock() // Unlock before save to prevent deadlock if saveState acquires lock
+	w.mu.Unlock() // Unlock before save
 	w.saveState()
 }
 
@@ -397,7 +497,7 @@ func (w *Watcher) handleAIResult(analysis *ai.AIAnalysis, snapshot *ai.Portfolio
 				}
 
 				// Execute
-				order, err := w.provider.PlaceOrder(bTicker, qty, "buy", sl, tp)
+				order, err := w.provider.PlaceOrder(bTicker, qty, "buy")
 				if err != nil {
 					resultsBuilder.WriteString(fmt.Sprintf("❌ AI Buy Failed: %v\n", err))
 					success = false

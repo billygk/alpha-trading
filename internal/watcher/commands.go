@@ -304,7 +304,7 @@ func (w *Watcher) handleSellCommand(parts []string) string {
 				positionFound = true
 
 				// Execute Sell
-				order, err := w.provider.PlaceOrder(ticker, p.Qty, "sell", decimal.Zero, decimal.Zero)
+				order, err := w.provider.PlaceOrder(ticker, p.Qty, "sell")
 				if err != nil {
 					msg = append(msg, fmt.Sprintf("❌ Failed to sell position: %v", err))
 					log.Printf("[FATAL_TRADE_ERROR] Manual sell failed for %s: %v", ticker, err)
@@ -436,12 +436,9 @@ func (w *Watcher) handleUpdateCommand(parts []string) string {
 		}
 	}
 
-	// --- Spec 93: Multi-Broker Risk Update ---
-	// Call Provider to update risk on exchange
-	if err := w.provider.UpdatePositionRisk(ticker, sl, tp); err != nil {
-		// Sanitize error for Telegram (wrap in code block)
-		return fmt.Sprintf("❌ Broker Update Failed:\n`%v`", err)
-	}
+	// Spec 102: Virtual-only Risk Management
+	// We no longer sync risk to the broker in this generation.
+	// w.provider.UpdatePositionRisk(ticker, sl, tp) is removed.
 
 	// Update Local State for Dashboard Consistency
 	w.mu.Lock()

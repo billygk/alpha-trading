@@ -67,6 +67,15 @@ func main() {
 	// Spec 99.1: Startup Notification
 	w.SendStartupNotification()
 
+	// Spec 104: Post-Reboot Verification (Infrastructure Sync)
+	// Spec 104: Post-Reboot Verification (Infrastructure Sync)
+	if _, err := w.SyncWithBroker(); err != nil {
+		log.Printf("CRITICAL: Startup Sync failed: %v", err)
+	} else {
+		// Spec 104 Notification
+		telegram.Notify("🔄 Infrastructure Recovery: State reconciled with Broker.")
+	}
+
 	// 5. Main Loop
 	// Listen for context cancellation or ticker
 	w.Poll() // Run once immediately on start

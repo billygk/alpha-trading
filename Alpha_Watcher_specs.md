@@ -878,3 +878,35 @@ Any internal "Abort" (e.g., Spec 85 Slippage Gate or Spec 91 Cancellation Timeou
 Report [DATA_ERROR] if watchlist_prices returns null or stale (Ref Spec 78).
 Quiet Mode Logic: If the AI returns HOLD with a confidence score > 0.90, the bot may suppress the decision notification to reduce noise, unless it was a manual /scan.
 
+## 100. Pure App-Side Virtual Risk (Decommissioning Broker Brackets)
+Objective: Eliminate Alpaca API throttling and PDT flags by handling all SL/TP/Trailing logic internally.
+Implementation:
+Decommission: Spec 89 (Native Bracket Orders) and Spec 103 (Hybrid Floor) are PERMANENTLY REMOVED.
+Authority: The application is the sole authority for risk thresholds. Alpaca only receives Market Orders when a threshold is breached.
+Persistence: portfolio_state.json is the definitive registry of active SL, TP, and HWM values.
+
+## 101. Virtual-to-Market Execution (The "Trigger" Bridge)
+Objective: Ensure the autonomous bot executes a market sell when an internal threshold is breached.
+Implementation:
+During every poll cycle (Ref Spec 20), the bot compares CurrentPrice against local StopLoss and TakeProfit.
+Trigger: If CurrentPrice <= StopLoss OR CurrentPrice >= TakeProfit:
+The bot MUST immediately initiate an autonomous /sell <ticker> sequence.
+Execution: Call alpaca.PlaceOrder(Side: Sell, Type: Market, TIF: Day).
+Notification: Telegram must report: 🎯 VIRTUAL TRIGGER: {{ticker}} reached {{threshold_type}} at ${{price}}. Executing Market Exit.
+
+## 102. MarketProvider Interface: Stateless Pricing
+Implementation:
+The MarketProvider interface (Spec 93) is simplified. It is no longer responsible for "Updating Position Risk" at the broker level.
+Interface: Maintain GetLatestTrade(ticker string) and PlaceOrder(params).
+Responsibility: The Watcher core handles the comparison logic; the MarketProvider remains a stateless wrapper for Alpaca REST calls.
+
+## 103. [REMOVED]
+(Infrastructure-level High Availability is handled externally; logic removed per architect directive).
+
+## 104. Post-Reboot Verification (Infrastructure Sync)
+Objective: Ensure that an autonomous instance recovery results in a correct risk state.
+Implementation:
+Upon every startup (Spec 4), the bot MUST immediately execute a JIT Broker Reconciliation (Spec 68).
+Validation: If positions exist on the broker that are missing from the mounted portfolio_state.json, the bot must perform an emergency recovery of those assets (Spec 42) before entering the polling loop.
+Notification: Post-startup status report must indicate: "🔄 Infrastructure Recovery: State reconciled with Broker."
+

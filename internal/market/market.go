@@ -16,8 +16,8 @@ type MarketProvider interface {
 	SearchAssets(query string) ([]models.Asset, error)
 
 	// Execution
-	PlaceOrder(ticker string, qty decimal.Decimal, side string, slPrice decimal.Decimal, tpPrice decimal.Decimal) (*models.Order, error)
-	UpdatePositionRisk(ticker string, sl, tp decimal.Decimal) error
+	PlaceOrder(ticker string, qty decimal.Decimal, side string) (*models.Order, error)
+
 	GetOrder(orderID string) (*models.Order, error)
 	ListOrders(status string) ([]models.Order, error)
 	CancelOrder(orderID string) error

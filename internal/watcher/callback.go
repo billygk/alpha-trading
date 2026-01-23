@@ -121,7 +121,7 @@ func (w *Watcher) HandleCallback(callbackID, data string) string {
 			return fmt.Sprintf("❌ Execution Aborted: Could not clear pending orders for %s (Timeout).", ticker)
 		}
 
-		order, err := w.provider.PlaceOrder(ticker, qty, "sell", decimal.Zero, decimal.Zero)
+		order, err := w.provider.PlaceOrder(ticker, qty, "sell")
 		if err != nil {
 			msg := fmt.Sprintf("❌ Execution Failed for %s: %v", ticker, err)
 			log.Printf("[FATAL_TRADE_ERROR] %s", msg)
@@ -210,7 +210,7 @@ func (w *Watcher) handleBuyCallback(data string) string {
 		}
 
 		// 1. Execute Buy
-		order, err := w.provider.PlaceOrder(ticker, proposal.Qty, "buy", proposal.StopLoss, proposal.TakeProfit)
+		order, err := w.provider.PlaceOrder(ticker, proposal.Qty, "buy")
 		if err != nil {
 			msg := fmt.Sprintf("❌ Buy Execution Failed: %v", err)
 			log.Printf("[FATAL_TRADE_ERROR] %s", msg)
@@ -363,7 +363,7 @@ func (w *Watcher) handleAICallback(data string) string {
 						tp = price.Mul(multiplier)
 					}
 
-					order, err := w.provider.PlaceOrder(ticker, qty, "buy", sl, tp)
+					order, err := w.provider.PlaceOrder(ticker, qty, "buy")
 					if err != nil {
 						output = fmt.Sprintf("❌ Buy Failed (%s): %v", ticker, err)
 					} else {

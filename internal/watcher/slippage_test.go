@@ -27,7 +27,7 @@ func (m *SpyMarketProvider) GetQuote(ticker string) (*models.Quote, error) {
 	}
 	return &models.Quote{BidPrice: decimal.NewFromFloat(100), AskPrice: decimal.NewFromFloat(100.1)}, nil
 }
-func (m *SpyMarketProvider) PlaceOrder(ticker string, qty decimal.Decimal, side string, sl, tp decimal.Decimal) (*models.Order, error) {
+func (m *SpyMarketProvider) PlaceOrder(ticker string, qty decimal.Decimal, side string) (*models.Order, error) {
 	m.placeOrderCalled = true
 	return &models.Order{ID: "spy_order_id"}, nil
 }
@@ -40,14 +40,17 @@ func (m *SpyMarketProvider) GetOrder(orderID string) (*models.Order, error) {
 func (m *SpyMarketProvider) GetBuyingPower() (decimal.Decimal, error) {
 	return decimal.NewFromFloat(10000), nil
 }
-func (m *SpyMarketProvider) ListOrders(status string) ([]models.Order, error)         { return nil, nil }
-func (m *SpyMarketProvider) GetEquity() (decimal.Decimal, error)                      { return decimal.Zero, nil }
-func (m *SpyMarketProvider) GetClock() (*models.Clock, error)                         { return &models.Clock{IsOpen: true}, nil }
-func (m *SpyMarketProvider) SearchAssets(query string) ([]models.Asset, error)        { return nil, nil }
-func (m *SpyMarketProvider) UpdatePositionRisk(ticker string, sl, tp decimal.Decimal) error { return nil }
-func (m *SpyMarketProvider) CancelOrder(orderID string) error                         { return nil }
-func (m *SpyMarketProvider) ListPositions() ([]models.BrokerPosition, error)          { return nil, nil }
-func (m *SpyMarketProvider) GetBars(ticker string, limit int) ([]models.Bar, error)   { return nil, nil }
+func (m *SpyMarketProvider) ListOrders(status string) ([]models.Order, error) { return nil, nil }
+func (m *SpyMarketProvider) GetEquity() (decimal.Decimal, error)              { return decimal.Zero, nil }
+func (m *SpyMarketProvider) GetClock() (*models.Clock, error) {
+	return &models.Clock{IsOpen: true}, nil
+}
+func (m *SpyMarketProvider) SearchAssets(query string) ([]models.Asset, error) { return nil, nil }
+
+// UpdatePositionRisk removed
+func (m *SpyMarketProvider) CancelOrder(orderID string) error                       { return nil }
+func (m *SpyMarketProvider) ListPositions() ([]models.BrokerPosition, error)        { return nil, nil }
+func (m *SpyMarketProvider) GetBars(ticker string, limit int) ([]models.Bar, error) { return nil, nil }
 func (m *SpyMarketProvider) GetPortfolioHistory(period, timeframe string) (*models.PortfolioHistory, error) {
 	return nil, nil
 }
