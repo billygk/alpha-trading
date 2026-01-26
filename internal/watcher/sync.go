@@ -82,14 +82,14 @@ func (w *Watcher) SyncWithBroker() (models.PortfolioState, error) {
 	existsMap := make(map[string]models.Position)
 	for _, p := range w.state.Positions {
 		if p.Status == "ACTIVE" {
-			existsMap[p.Ticker] = p
+			existsMap[strings.ToUpper(strings.TrimSpace(p.Ticker))] = p
 		}
 	}
 
 	newPositions := []models.Position{}
 
 	for _, p := range positions {
-		ticker := p.Symbol
+		ticker := strings.ToUpper(strings.TrimSpace(p.Symbol))
 		qty := p.Qty
 		avgEntry := p.AvgEntryPrice
 
