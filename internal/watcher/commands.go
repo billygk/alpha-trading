@@ -367,23 +367,33 @@ func (w *Watcher) handleSellCommand(parts []string) string {
 
 func (w *Watcher) handleUpdateCommand(parts []string) string {
 	// /update AAPL 200 250
-	if len(parts) < 4 {
-		return "Usage: /update <ticker> <sl> <tp>"
+	// /update AAPL 200 [250]
+	if len(parts) < 3 {
+		return "Usage: /update <ticker> <sl> [tp]"
 	}
 
 	ticker := strings.ToUpper(parts[1])
 	slRaw, err1 := decimal.NewFromString(parts[2])
-	tpRaw, err2 := decimal.NewFromString(parts[3])
+	if err1 != nil {
+		return "⚠️ Invalid SL format."
+	}
 
-	if err1 != nil || err2 != nil {
-		return "⚠️ Invalid number format."
+	var tpRaw decimal.Decimal
+	var err2 error
+
+	if len(parts) >= 4 {
+		tpRaw, err2 = decimal.NewFromString(parts[3])
+	}
+
+	// Default TP: SL + 10%
+	if len(parts) < 4 || err2 != nil {
+		tpRaw = slRaw.Mul(decimal.NewFromFloat(1.10))
 	}
 
 	// Round to 2 decimals to satisfy broker requirements (Spec 99.3)
 	sl := slRaw.Round(2)
 	tp := tpRaw.Round(2)
 
-	// --- Spec 51: Intent Mutation Guardrails ---
 	// 1. Context: Get Market Price (Network Call outside lock)
 	currentPrice, err := w.provider.GetPrice(ticker)
 	if err != nil {
