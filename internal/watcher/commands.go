@@ -428,12 +428,6 @@ func (w *Watcher) handleUpdateCommand(parts []string) string {
 				currentSL.StringFixed(2), sl.StringFixed(2))
 		}
 
-		// Spec 100: Fractional Position Guardrail
-		// Alpaca does not support OCO/Limit updates for fractional positions.
-		if w.state.Positions[foundIndex].IsFractional {
-			return fmt.Sprintf("❌ Fractional positions (%s %s) do not support OCO/Limit updates in Alpaca.\nReason: Broker restriction on fractional limit orders.\nAdvice: Use /sell to exit via Market Order.",
-				w.state.Positions[foundIndex].Quantity.StringFixed(4), ticker)
-		}
 	}
 
 	// Spec 102: Virtual-only Risk Management
