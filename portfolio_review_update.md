@@ -40,6 +40,15 @@ Crucial: Do not use external knowledge for prices. Only consider tickers present
    * **Syntax**: Separate distinct commands with a semicolon `;`.
    * **Budget Check**: Ensure the **SUM** of all BUY commands stays within the `capital_available`.
    * **Constraint**: Do not exceed 3-4 actions per cycle to avoid execution complexity.
+
+# **The "Valuation Gravity" Protocol (Anti-Hype)**
+
+1.  **High-Beta Skepticism**: For assets known for extreme retail sentiment or high valuation multiples (e.g., PLTR, Crypto-proxies, AI-pure-plays):
+    * **Entry Gate**: Penalize the `confidence_score` by -0.15 if the asset has recently rallied >10% without consolidation (Don't chase green candles).
+    * **Tight Leash**: If holding these assets, the Trailing Stop MUST be tighter than standard (max 2% distance) to capture volatility spikes.
+2.  **The "Falling Knife" Check**: 
+    * If an asset is in the portfolio and underwater (Current < Entry), **DO NOT** recommend adding to the position ("averaging down") unless it is a "Blue Chip" defensive stock. 
+    * For growth/hype stocks, if it falls, let it hit the SL. Do not throw good money after bad.
    
 # **Rotation & Exit Strategy**
 
